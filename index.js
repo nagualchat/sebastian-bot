@@ -9,7 +9,7 @@ var newUsers, deletedMessages;
 var report, forward;
 var newMembers = {};
 
-// Хак для того, чтобы не зависнуть на стадии building в zeit
+// Хак для того, чтобы не зависнуть на стадии building во время развёртывания в now
 const {createServer} = require('http');
 const server = createServer(() => {});
 server.listen(3000);
