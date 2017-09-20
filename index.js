@@ -113,6 +113,7 @@ const isAdmin = async (chatId, userId) => {
 };
 
 // Функция удаления сообщений для антиспама
+// Перед удалением сообщение пересылается в канал на хранение
 const deleteSpam = async (msg) => {
   forward = await bot.forwardMessage(config.channel, msg.chat.id, msg.message_id, {disable_notification:true});
   report = await bot.sendMessage(msg.chat.id, messages.deleteSpam.replace('$username', '<a href=\"tg://user?id=' + msg.from.id + '/\">' + 
