@@ -9,6 +9,11 @@ var newUsers, deletedMessages;
 var report, forward;
 var newMembers = {};
 
+// Хак для того, чтобы не зависнуть на стадии building в zeit
+const {createServer} = require('http');
+const server = createServer(() => {});
+server.listen(3000);
+
 MongoClient.connect(config.mongoConnectUrl, (err, database) => {
   if (err) {
     console.log(err.name + ': ' + err.message);
