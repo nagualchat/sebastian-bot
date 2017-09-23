@@ -5,7 +5,7 @@ const moment = require('moment');
 const config = require('./config/config');
 const messages = require('./config/messages');
 
-var newUsers, deletedMessages;
+var mongoUsers, mongoDeleted;
 var report, forward;
 var newMembers = {};
 
@@ -16,32 +16,39 @@ server.listen(3000);
 
 MongoClient.connect(config.mongoConnectUrl, (err, database) => {
   if (err) {
-    console.log(err.name + ': ' + err.message);
+    console.log('[Mongo] connection error:', err.message);
     return database.close();
   }
-  deletedMessages = database.collection('deleted_messages');
-  newUsers = database.collection('new_users');
+  mongoDeleted = database.collection('deleted_messages');
+  mongoUsers = database.collection('new_users');
 });
 
 var bot = new TelegramBot(config.token, {polling: true});
+bot.getMe().then((res) => { botId = res.id });
 
 // Приветствование вошедших участников; фразы выбираются случайным образом
 // Для новых участников - одно приветствие, для вернувшихся - другое, для быстро вернувшихся - третье
 bot.on('new_chat_members', async msg => {
+  if (msg.new_chat_member.id == botId) return; // Чтобы бот не приветствовал самого себя
   newMembers[msg.new_chat_member.id] = msg.date; // Для антиспама
-  var user = await newUsers.findOne({userId: msg.new_chat_member.id});
-  if (!user) {
-    bot.sendMessage(msg.chat.id, randomMessage(messages.welcomeNew).replace('$name', msg.new_chat_member.first_name));
-    newUsers.insertOne({userId: msg.new_chat_member.id, joinDate: msg.date});
-  } else {
-    if (moment().diff(moment.unix(user.joinDate), 'hours') <= config.joinPeriod) {
-      bot.sendMessage(msg.chat.id, randomMessage(messages.welcomeRet1).replace('$name', msg.new_chat_member.first_name));
-      newUsers.update({userId: msg.new_chat_member.id}, {$set: {joinDate: msg.date}})
-    } else {
-      bot.sendMessage(msg.chat.id, randomMessage(messages.welcomeRet2).replace('$name', msg.new_chat_member.first_name));
-      newUsers.update({userId: msg.new_chat_member.id}, {$set: {joinDate: msg.date}})
+  mongoUsers.findOne({userId: msg.new_chat_member.id}, function (err, user) {
+    if (err) {
+      console.log('[Mongo] find new users error:', err.message);
+      return;
     }
-  }
+    if (!user) {
+      bot.sendMessage(msg.chat.id, randomMessage(messages.welcomeNew).replace('$name', msg.new_chat_member.first_name));
+      mongoUsers.insertOne({userId: msg.new_chat_member.id, joinDate: msg.date});
+    } else {
+      if (moment().diff(moment.unix(user.joinDate), 'hours') <= config.joinPeriod) {
+        bot.sendMessage(msg.chat.id, randomMessage(messages.welcomeRet1).replace('$name', msg.new_chat_member.first_name));
+        mongoUsers.update({userId: msg.new_chat_member.id}, {$set: {joinDate: msg.date}})
+      } else {
+        bot.sendMessage(msg.chat.id, randomMessage(messages.welcomeRet2).replace('$name', msg.new_chat_member.first_name));
+        mongoUsers.update({userId: msg.new_chat_member.id}, {$set: {joinDate: msg.date}})
+      }
+    }
+  })
 });
 
 bot.onText(/\/start/, (msg) => {
@@ -70,7 +77,7 @@ bot.onText(/\/(del+) ?(.+)?/, async (msg, match) => {
       report = await bot.sendMessage(msg.chat.id, messages.deleteDel1.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
       msg.reply_to_message.from.first_name + '</a>'), {parse_mode : 'HTML', reply_markup: {inline_keyboard: [[{text: messages.reportBtn, callback_data: 'sendDelMsg'}]]}});
     }
-      deletedMessages.insertOne({msg, reportId: report.message_id, forwardId: forward.message_id});
+      mongoDeleted.insertOne({msg, reportId: report.message_id, forwardId: forward.message_id});
       bot.deleteMessage(msg.chat.id, msg.reply_to_message.message_id);
     };
 });
@@ -93,13 +100,13 @@ bot.on('text', async msg => {
   };
 });
 
-// Нажатие на кнопку пересылает сохраннённое в канале сообщение пользователю в приват
+// Нажатие на кнопку пересылает сохранённое в канале сообщение пользователю в приват
 bot.on('callback_query', async (msg) => {
   if (msg.data === 'sendDelMsg') {
     var answer = await bot.answerCallbackQuery(msg.id);
-    deletedMessages.findOne({reportId: msg.message.message_id}, function (err, find) {
+    mongoDeleted.findOne({reportId: msg.message.message_id}, function (err, find) {
       if (err) {
-        console.log('err:', err);
+        console.log('[Mongo] find deleted message error:', err.message);
         return;
       }
       bot.forwardMessage(msg.from.id, config.channel, find.forwardId);
@@ -123,7 +130,7 @@ const deleteSpam = async (msg) => {
   forward = await bot.forwardMessage(config.channel, msg.chat.id, msg.message_id, {disable_notification:true});
   report = await bot.sendMessage(msg.chat.id, messages.deleteSpam.replace('$username', '<a href=\"tg://user?id=' + msg.from.id + '/\">' + 
   msg.from.first_name + '</a>'), {parse_mode : 'HTML', reply_markup: {inline_keyboard: [[{text: messages.reportBtn, callback_data: 'sendDelMsg'}]]}});
-  deletedMessages.insertOne({msg, reportId: report.message_id, forwardId: forward.message_id});
+  mongoDeleted.insertOne({msg, reportId: report.message_id, forwardId: forward.message_id});
   bot.deleteMessage(msg.chat.id, msg.message_id);
 };
 
