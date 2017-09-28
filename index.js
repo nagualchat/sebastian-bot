@@ -26,9 +26,13 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
 var bot = new TelegramBot(config.token, {polling: true});
 bot.getMe().then((res) => { botId = res.id });
 
+bot.on('polling_error', (err) => {
+  console.log('[Telegram] polling error:', err.message);
+});
+
 // Приветствование вошедших участников; фразы выбираются случайным образом
 // Для новых участников - одно приветствие, для вернувшихся - другое, для быстро вернувшихся - третье
-bot.on('new_chat_members', async msg => {
+bot.on('new_chat_members', async (msg) => {
   if (msg.new_chat_member.id == botId) return; // Чтобы бот не приветствовал самого себя
   newMembers[msg.new_chat_member.id] = msg.date; // Для антиспама
   mongoUsers.findOne({userId: msg.new_chat_member.id}, function (err, user) {
@@ -57,6 +61,12 @@ bot.onText(/\/start/, (msg) => {
   }
 });
 
+bot.onText(/\/help/, (msg) => {
+  if (msg.chat.type == 'private') {
+    bot.sendMessage(msg.chat.id, messages.help);
+  }
+});
+
 // Команда /say, отправляющая сообщение в группу от лица бота (доступна только админам)
 bot.onText(/\/say (.+)/, async (msg, match) => {
   if (msg.chat.type == 'private' &&  await isAdmin(config.group, msg.from.id)) {
@@ -82,10 +92,18 @@ bot.onText(/\/(del+) ?(.+)?/, async (msg, match) => {
     };
 });
 
+bot.onText(/доброе утро|доброго утра|утро доброе|утра доброго]|^(утра|утречка)(\.|\!)?$/i, (msg) => {
+  bot.sendMessage(msg.chat.id, randomMessage(messages.goodDay));
+});
+
+bot.onText(/спокойной ночи|(ночки|ночки всем|снов|всем снов)(\.|\!)?$/i, (msg) => {
+  bot.sendMessage(msg.chat.id, randomMessage(messages.goodNight));
+});
+
 // Антиспам, который действует для недавно вошедших в чат участников
 // Срабатывает на ссылки типа @username, t.me, telegram.me и forward, удаляя сообщения
 // Удалённые сообщения сохраняются и при запросе высылаются пользователю в приват
-bot.on('text', async msg => {
+bot.on('text', async (msg) => {
   for (var id in newMembers) {
     if (msg.from.id == id) {
       if (moment().diff(moment.unix(newMembers[id]), 'seconds') <= config.antispamPeriod) {
