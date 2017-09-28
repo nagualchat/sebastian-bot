@@ -61,12 +61,6 @@ bot.onText(/\/start/, (msg) => {
   }
 });
 
-bot.onText(/\/help/, (msg) => {
-  if (msg.chat.type == 'private') {
-    bot.sendMessage(msg.chat.id, messages.help);
-  }
-});
-
 // Команда /say, отправляющая сообщение в группу от лица бота (доступна только админам)
 bot.onText(/\/say (.+)/, async (msg, match) => {
   if (msg.chat.type == 'private' &&  await isAdmin(config.group, msg.from.id)) {
