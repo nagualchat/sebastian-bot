@@ -5,7 +5,8 @@ const moment = require('moment');
 const config = require('./config/config');
 const messages = require('./config/messages');
 
-var mongoUsers, mongoDeleted;
+var mongoUsers, mongoDeleted, mongoThanks;
+var lastGoodDay, lastGoodNight;
 var report, forward;
 var newMembers = {};
 
@@ -20,8 +21,10 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
     return database.close();
   }
   mongoDeleted = database.collection('deleted_messages');
-  mongoUsers = database.collection('new_users');
+  mongoUsers = database.collection('users');
 });
+
+var groupCreateDate = moment(config.groupCreateDate, 'DD-MM-YYYY');
 
 var bot = new TelegramBot(config.token, {polling: true});
 bot.getMe().then((res) => { botId = res.id });
@@ -30,6 +33,17 @@ bot.on('polling_error', (err) => {
   console.log('[Telegram] polling error:', err.message);
 });
 
+// Поздравление в честь годовщины чата
+// if (moment().format('DD-MM') == moment(groupCreateDate).format('DD-MM')) {
+//   var yearAgo = moment().diff(groupCreateDate, 'years');
+//   var message = (yearAgo == 1) ? 'один год' :
+//   (yearAgo == 2) ? 'два года' :
+//   (yearAgo == 3) ? 'три года' :
+//   'error';
+//   if (message == 'error') return;
+//   bot.sendMessage('200352801', messages.chatAnniversary.replace('$years', message));
+// };
+
 // Приветствование вошедших участников; фразы выбираются случайным образом
 // Для новых участников - одно приветствие, для вернувшихся - другое, для быстро вернувшихся - третье
 bot.on('new_chat_members', async (msg) => {
@@ -37,7 +51,7 @@ bot.on('new_chat_members', async (msg) => {
   newMembers[msg.new_chat_member.id] = msg.date; // Для антиспама
   mongoUsers.findOne({userId: msg.new_chat_member.id}, function (err, user) {
     if (err) {
-      console.log('[Mongo] find new users error:', err.message);
+      console.log('[Mongo] find user error:', err.message);
       return;
     }
     if (!user) {
@@ -55,10 +69,74 @@ bot.on('new_chat_members', async (msg) => {
   })
 });
 
+// Начисление очков благодарности
+bot.onText(/спасибо|благодарю|^(спс|thx)(\.|\!)?$/i, (msg) => {
+  if (msg.reply_to_message && msg.from.id != msg.reply_to_message.from.id) {
+    mongoUsers.findOne({userId: msg.reply_to_message.from.id}, function (err, user) {
+      if (err) {
+        console.log('[Mongo] find user error:', err.message);
+        return;
+      }
+      if (!user) {
+        mongoUsers.insertOne({userId: msg.reply_to_message.from.id, repPoints: 1});
+        bot.sendMessage(msg.chat.id, messages.repThxFirst.replace('$name', msg.reply_to_message.from.first_name).replace('$points', count));
+      } else if (!user.repPoints) {
+        mongoUsers.update({userId: msg.reply_to_message.from.id}, {$set: {repPoints: 1}})
+        bot.sendMessage(msg.chat.id, messages.repThxFirst.replace('$name', msg.reply_to_message.from.first_name).replace('$points', count));
+      } else {
+        var count = user.repPoints + 1;
+        mongoUsers.update({userId: msg.reply_to_message.from.id}, {$set: {repPoints: count}})
+        bot.sendMessage(msg.chat.id, randomMessage(messages.repThx).replace('$name', msg.reply_to_message.from.first_name).replace('$points', count));
+      }
+    })
+  }
+});
+
+bot.onText(/^плюсую|👍|\+(\.|\!)?$/i, (msg) => {
+  if (msg.reply_to_message && msg.from.id != msg.reply_to_message.from.id) {
+    mongoUsers.findOne({userId: msg.reply_to_message.from.id}, function (err, user) {
+      if (err) {
+        console.log('[Mongo] find user error:', err.message);
+        return;
+      }
+      if (!user) {
+        mongoUsers.insertOne({userId: msg.reply_to_message.from.id, repPoints: 1});
+        bot.sendMessage(msg.chat.id, messages.repPlusFirst.replace('$name', msg.reply_to_message.from.first_name).replace('$points', count));
+      } else if (!user.repPoints) {
+        mongoUsers.update({userId: msg.reply_to_message.from.id}, {$set: {repPoints: 1}})
+        bot.sendMessage(msg.chat.id, messages.repPlusFirst.replace('$name', msg.reply_to_message.from.first_name).replace('$points', count));
+      } else {
+        var count = user.repPoints + 1;
+        mongoUsers.update({userId: msg.reply_to_message.from.id}, {$set: {repPoints: count}})
+        bot.sendMessage(msg.chat.id, randomMessage(messages.repPlus).replace('$name', msg.reply_to_message.from.first_name).replace('$points', count));
+      }
+    })
+  }
+});
+
+// Команда /me, отображающая накопленные очки благодарности
+bot.onText(/\/me/, (msg) => {
+  mongoUsers.findOne({userId: msg.from.id}, function (err, user) {
+    if (err) {
+      console.log('[Mongo] find user error:', err.message);
+      return;
+    }
+    if (!user || user.repPoints == 0) {
+      bot.sendMessage(msg.chat.id, messages.showRep0.replace('$name', msg.from.first_name));
+    } else {
+      bot.sendMessage(msg.chat.id, messages.showRep.replace('$name', msg.from.first_name).replace('$points', user.repPoints));      
+    }
+  })
+});
+
 bot.onText(/\/start/, (msg) => {
   if (msg.chat.type == 'private') {
-    bot.sendMessage(msg.chat.id, messages.start);
+    bot.sendMessage(msg.chat.id, messages.help);
   }
+});
+
+bot.onText(/\/help/, (msg) => {
+  bot.sendMessage(msg.chat.id, messages.help);
 });
 
 // Команда /say, отправляющая сообщение в группу от лица бота (доступна только админам)
@@ -86,18 +164,32 @@ bot.onText(/\/(del+) ?(.+)?/, async (msg, match) => {
     };
 });
 
-bot.onText(/доброе утро|доброго утра|утро доброе|утра доброго]|^(утра|утречка)(\.|\!)?$/i, (msg) => {
-  bot.sendMessage(msg.chat.id, randomMessage(messages.goodDay));
+// Реакция бота на пожелания доброго утра и спокойной ночи
+bot.onText(/добр\S* утр\S*|утр\S* добро\S*|^(утра|утречка)(\.|\!)?$/i, (msg) => {
+  if (!lastGoodDay) {
+    bot.sendMessage(msg.chat.id, randomMessage(messages.goodDay));
+    lastGoodDay = msg.date;
+  } else if (moment().diff(moment.unix(lastGoodDay), 'seconds') >= config.responseTimeout) {
+     bot.sendMessage(msg.chat.id, randomMessage(messages.goodDay));
+     lastGoodDay = msg.date;
+  }
 });
 
-bot.onText(/спокойной ночи|(ночки|ночки всем|снов|всем снов)(\.|\!)?$/i, (msg) => {
-  bot.sendMessage(msg.chat.id, randomMessage(messages.goodNight));
+bot.onText(/спокойной ночи|приятных снов\S*|доброноч\S*|^(ночки|ночки всем|снов|всем снов)(\.|\!)?$/i, (msg) => {
+  if (!lastGoodNight) {
+    bot.sendMessage(msg.chat.id, randomMessage(messages.goodNight));
+    lastGoodNight = msg.date;
+  } else if (moment().diff(moment.unix(lastGoodNight), 'seconds') >= config.responseTimeout) {
+     bot.sendMessage(msg.chat.id, randomMessage(messages.goodNight));
+     lastGoodNight = msg.date;
+  }
 });
 
 // Антиспам, который действует для недавно вошедших в чат участников
 // Срабатывает на ссылки типа @username, t.me, telegram.me и forward, удаляя сообщения
 // Удалённые сообщения сохраняются и при запросе высылаются пользователю в приват
 bot.on('text', async (msg) => {
+  if (msg.chat.type == 'private') console.log('[Log]', msg.from.first_name + ' (' + msg.from.id + ')' + ' wrote to bot: ' + msg.text);
   for (var id in newMembers) {
     if (msg.from.id == id) {
       if (moment().diff(moment.unix(newMembers[id]), 'seconds') <= config.antispamPeriod) {
@@ -115,6 +207,7 @@ bot.on('text', async (msg) => {
 // Нажатие на кнопку пересылает сохранённое в канале сообщение пользователю в приват
 bot.on('callback_query', async (msg) => {
   if (msg.data === 'sendDelMsg') {
+    console.log('[Log]', msg.from.first_name + ' (' + msg.from.id + ')' + ' pressed the sendDelMsg button under ' + msg.message.message_id + ' bot message');
     var answer = await bot.answerCallbackQuery(msg.id);
     mongoDeleted.findOne({reportId: msg.message.message_id}, function (err, find) {
       if (err) {
