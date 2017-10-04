@@ -234,3 +234,4 @@ const randomMessage = (message) => {
   var randomIndex = Math.floor(Math.random() * ((max - 0) + 1));
   return message[randomIndex];
 };
+
