@@ -33,17 +33,6 @@ bot.on('polling_error', (err) => {
   console.log('[Telegram] polling error:', err.message);
 });
 
-// Поздравление в честь годовщины чата
-// if (moment().format('DD-MM') == moment(groupCreateDate).format('DD-MM')) {
-//   var yearAgo = moment().diff(groupCreateDate, 'years');
-//   var message = (yearAgo == 1) ? 'один год' :
-//   (yearAgo == 2) ? 'два года' :
-//   (yearAgo == 3) ? 'три года' :
-//   'error';
-//   if (message == 'error') return;
-//   bot.sendMessage('200352801', messages.chatAnniversary.replace('$years', message));
-// };
-
 // Приветствование вошедших участников; фразы выбираются случайным образом
 // Для новых участников - одно приветствие, для вернувшихся - другое, для быстро вернувшихся - третье
 bot.on('new_chat_members', async (msg) => {
