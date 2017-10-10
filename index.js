@@ -5,7 +5,7 @@ const moment = require('moment');
 const config = require('./config/config');
 const messages = require('./config/messages');
 
-var mongoUsers, mongoDeleted, mongoThanks;
+var mongoUsers, mongoDeleted;
 var lastGoodDay, lastGoodNight;
 var report, forward;
 var newMembers = {};
@@ -24,8 +24,6 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
   mongoUsers = database.collection('users');
 });
 
-var groupCreateDate = moment(config.groupCreateDate, 'DD-MM-YYYY');
-
 var bot = new TelegramBot(config.token, {polling: true});
 bot.getMe().then((res) => { botId = res.id });
 
@@ -36,7 +34,12 @@ bot.on('polling_error', (err) => {
 // Приветствование вошедших участников; фразы выбираются случайным образом
 // Для новых участников - одно приветствие, для вернувшихся - другое, для быстро вернувшихся - третье
 bot.on('new_chat_members', async (msg) => {
-  if (msg.new_chat_member.id == botId) return; // Чтобы бот не приветствовал самого себя
+  if (msg.new_chat_member.id == botId) return; // Чтобы не приветствовал самого себя
+  if (msg.new_chat_member.is_bot === true) {
+    await bot.kickChatMember(msg.chat.id, msg.new_chat_member.id);
+    await bot.sendPhoto(msg.chat.id, messages.kickBotImg, {caption: messages.kickBotMsg});
+    return;
+  };
   newMembers[msg.new_chat_member.id] = msg.date; // Для антиспама
   mongoUsers.findOne({userId: msg.new_chat_member.id}, function (err, user) {
     if (err) {
@@ -60,7 +63,7 @@ bot.on('new_chat_members', async (msg) => {
 
 // Начисление очков благодарности
 bot.onText(/спасибо|благодарю|^(спс|thx)(\.|\!)?$/i, (msg) => {
-  if (msg.reply_to_message && msg.from.id != msg.reply_to_message.from.id) {
+  if (msg.reply_to_message && msg.reply_to_message.from.id != msg.from.id && msg.reply_to_message.from.id != botId) {
     mongoUsers.findOne({userId: msg.reply_to_message.from.id}, function (err, user) {
       if (err) {
         console.log('[Mongo] find user error:', err.message);
@@ -68,10 +71,10 @@ bot.onText(/спасибо|благодарю|^(спс|thx)(\.|\!)?$/i, (msg) =>
       }
       if (!user) {
         mongoUsers.insertOne({userId: msg.reply_to_message.from.id, repPoints: 1});
-        bot.sendMessage(msg.chat.id, messages.repThxFirst.replace('$name', msg.reply_to_message.from.first_name).replace('$points', count));
+        bot.sendMessage(msg.chat.id, randomMessage(messages.repThxFirst).replace('$name', msg.reply_to_message.from.first_name).replace('$points', count));
       } else if (!user.repPoints) {
         mongoUsers.update({userId: msg.reply_to_message.from.id}, {$set: {repPoints: 1}})
-        bot.sendMessage(msg.chat.id, messages.repThxFirst.replace('$name', msg.reply_to_message.from.first_name).replace('$points', count));
+        bot.sendMessage(msg.chat.id, randomMessage(messages.repThxFirst).replace('$name', msg.reply_to_message.from.first_name).replace('$points', count));
       } else {
         var count = user.repPoints + 1;
         mongoUsers.update({userId: msg.reply_to_message.from.id}, {$set: {repPoints: count}})
@@ -81,8 +84,8 @@ bot.onText(/спасибо|благодарю|^(спс|thx)(\.|\!)?$/i, (msg) =>
   }
 });
 
-bot.onText(/^плюсую|👍|\+(\.|\!)?$/i, (msg) => {
-  if (msg.reply_to_message && msg.from.id != msg.reply_to_message.from.id) {
+bot.onText(/плюсую|^(👍|\+)(\.|\!)?$/i, (msg) => {  
+  if (msg.reply_to_message && msg.reply_to_message.from.id != msg.from.id && msg.reply_to_message.from.id != botId) {
     mongoUsers.findOne({userId: msg.reply_to_message.from.id}, function (err, user) {
       if (err) {
         console.log('[Mongo] find user error:', err.message);
@@ -90,10 +93,10 @@ bot.onText(/^плюсую|👍|\+(\.|\!)?$/i, (msg) => {
       }
       if (!user) {
         mongoUsers.insertOne({userId: msg.reply_to_message.from.id, repPoints: 1});
-        bot.sendMessage(msg.chat.id, messages.repPlusFirst.replace('$name', msg.reply_to_message.from.first_name).replace('$points', count));
+        bot.sendMessage(msg.chat.id, randomMessage(messages.repPlusFirst).replace('$name', msg.reply_to_message.from.first_name).replace('$points', count));
       } else if (!user.repPoints) {
         mongoUsers.update({userId: msg.reply_to_message.from.id}, {$set: {repPoints: 1}})
-        bot.sendMessage(msg.chat.id, messages.repPlusFirst.replace('$name', msg.reply_to_message.from.first_name).replace('$points', count));
+        bot.sendMessage(msg.chat.id, randomMessage(messages.repPlusFirst).replace('$name', msg.reply_to_message.from.first_name).replace('$points', count));
       } else {
         var count = user.repPoints + 1;
         mongoUsers.update({userId: msg.reply_to_message.from.id}, {$set: {repPoints: count}})
@@ -234,4 +237,3 @@ const randomMessage = (message) => {
   var randomIndex = Math.floor(Math.random() * ((max - 0) + 1));
   return message[randomIndex];
 };
-
