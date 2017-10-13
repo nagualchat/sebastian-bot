@@ -47,7 +47,7 @@ bot.on('new_chat_members', async (msg) => {
       return;
     }
     if (!user) {
-      bot.sendMessage(msg.chat.id, randomMessage(messages.welcomeNew).replace('$name', msg.new_chat_member.first_name));
+      bot.sendMessage(msg.chat.id, randomMessage(messages.welcomeNew).replace('$name', msg.new_chat_member.first_name), {parse_mode : 'markdown'});
       mongoUsers.insertOne({userId: msg.new_chat_member.id, joinDate: msg.date});
     } else {
       if (moment().diff(moment.unix(user.joinDate), 'hours') <= config.joinPeriod) {
