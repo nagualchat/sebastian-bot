@@ -6,7 +6,7 @@ const tools = require('./tools');
 const config = require('./config/config');
 const messages = require('./config/messages');
 
-var mongoUsers, mongoDeleted;
+var mongoUsers, mongoFavs, mongoDeleted;
 var lastGoodDay, lastGoodNight;
 var report, forward;
 var newMembers = {};
@@ -209,6 +209,9 @@ bot.onText(/^\/kick\b ?(.+)?/, async (msg, match) => {
         bot.sendMessage(msg.chat.id, messages.kick.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
         tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
       }
+    } else {
+      bot.sendMessage(msg.chat.id, messages.kickNotFound.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
+      tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
     }
   }
 });
@@ -306,7 +309,7 @@ bot.onText(/добр\S* утр\S*|утр\S* добро\S*|^(утра|утреч�
   }
 });
 
-bot.onText(/спокойной ночи|приятных снов\S*|доброноч\S*|^(ночки|ночки всем|снов|всем снов)(\.|\!)?$/i, (msg) => {
+bot.onText(/спокойной ночи|доброй ночи|приятных снов\S*|доброноч\S*|^(ночки|ночки всем|снов|всем снов)(\.|\!)?$/i, (msg) => {
   if (!lastGoodNight) {
     bot.sendMessage(msg.chat.id, tools.random(messages.goodNight));
     lastGoodNight = msg.date;
@@ -356,7 +359,7 @@ bot.on('new_chat_members', async (msg) => {
 });
 
 // Антиспам, который действует для недавно вошедших в чат участников
-// Срабатывает на ссылки типа @username, t.me, telegram.me и forward, удаляя сообщения
+// Срабатывает на forward и ссылки типа @username, t.me, telegram.me, удаляя содержащие их сообщения
 // Удалённые сообщения сохраняются и при запросе высылаются пользователю в приват
 bot.on('text', async (msg) => {
   if (msg.chat.type == 'private') console.log('[Log]', tools.nameToBeShow(msg.from) + ' (' + msg.from.id + ')' + ' wrote to bot: ' + msg.text);
