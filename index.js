@@ -28,6 +28,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
 
 const bot = new TelegramBot(config.token, {polling: true});
 bot.getMe().then((res) => { botMe = res });
+bot.getChat(config.group).then((res) => { group = res });
 
 bot.on('polling_error', (err) => {
   console.log('[Telegram] polling error:', err.message);
@@ -58,20 +59,26 @@ bot.onText(/^\/say (.+)/, async (msg, match) => {
 
 // Команда /fav, добавляющая сообщение в список избранных
 bot.onText(/^\/fav\b ?(.+)?/, (msg, match) => {
-  if (msg.chat.type == 'supergroup' && msg.reply_to_message && msg.reply_to_message.from.id != botMe.id) {
-    mongoFavs.findOne({messageId: msg.reply_to_message.message_id}, function (err, fav) {
-      if (!fav) {
-        if (match[1]) {
-          var caption = tools.capitalize(match[1]);
-          mongoFavs.insertOne({messageId: msg.reply_to_message.message_id, messageDate: msg.reply_to_message.date, favCreatorId: msg.from.id, favCaption: caption});
-          bot.sendMessage(msg.chat.id, messages.favAdd.replace('$fav', '«' + caption + '»'));
-        } else {
-          bot.sendMessage(msg.chat.id, messages.favAddCapt, {parse_mode : 'markdown'});
-        }
+  if (msg.chat.type == 'supergroup') {
+    if (msg.reply_to_message) {
+      if (msg.reply_to_message.from.id != botMe.id) {
+        mongoFavs.findOne({messageId: msg.reply_to_message.message_id}, function (err, fav) {
+          if (!fav) {
+            if (match[1] && match[1].length < 50) {
+              var caption = tools.capitalize(match[1]);
+              mongoFavs.insertOne({messageId: msg.reply_to_message.message_id, messageDate: msg.reply_to_message.date, favCreatorId: msg.from.id, favCaption: caption});
+              bot.sendMessage(msg.chat.id, messages.favAdd.replace('$fav', '«' + caption + '»'));
+            } else {
+              bot.sendMessage(msg.chat.id, messages.favAddWrong, {parse_mode : 'markdown'});
+            }
+          } else {
+            bot.sendMessage(msg.chat.id, messages.favAddDupl);
+          }
+        })
       } else {
-        bot.sendMessage(msg.chat.id, messages.favAddDupl);
+        bot.sendMessage(msg.chat.id, messages.favAddWrong, {parse_mode : 'markdown'});
       }
-    })
+    }
   }
 });
 
@@ -80,7 +87,7 @@ bot.onText(/^\/favs\b/, (msg, match) => {
   mongoFavs.find({}).sort({messageDate: 1}).toArray(function(err, doc) {
     if (doc != null) {
       var ans = doc.map(function (u){
-        return '<a href="http://t.me/nagualchat/' + u.messageId + '">' + u.favCaption + '</a>';       
+        return '<a href="http://t.me/' + group.username + '/' + u.messageId + '">' + u.favCaption + '</a>';       
     });
       bot.sendMessage(msg.chat.id, messages.favList + ans.join('\n'), {parse_mode : 'HTML', disable_web_page_preview: 'true'});
     }
@@ -88,8 +95,8 @@ bot.onText(/^\/favs\b/, (msg, match) => {
 });
 
 // Команда /e, позволяющая изменить имя закладки (доступна только админам)
-bot.onText(/^\/e\b (.+) (.+)/, async (msg, match) => {
-  if (match[1] && match[2] && await isAdmin(msg.chat.id, msg.from.id)) {
+bot.onText(/^\/e\b ?([^\s]+)? ?(.+)?/, async (msg, match) => {
+  if (match[1] && match[2] && await isAdmin(config.group, msg.from.id)) {
     var id = Number(match[1]);
     mongoFavs.findOne({messageId: id}, function (err, fav) {
       if (fav) {
@@ -104,7 +111,7 @@ bot.onText(/^\/e\b (.+) (.+)/, async (msg, match) => {
 
 // Команда /d, удаляющее закладку (доступна только админам)
 bot.onText(/^\/d\b ?(.+)?/, async (msg, match) => {
-  if (match[1] && await isAdmin(msg.chat.id, msg.from.id)) {
+  if (match[1] && await isAdmin(config.group, msg.from.id)) {
     var id = Number(match[1]);
     mongoFavs.findOne({messageId: id}, function (err, fav) {
       if (fav) {
@@ -189,35 +196,34 @@ bot.onText(/^\/unmute$/, async (msg, match) => {
 // Команда /kick, изгоняющая злых духов (доступна только админам)
 bot.onText(/^\/kick\b ?(.+)?/, async (msg, match) => {
   if (msg.chat.type == 'supergroup' && msg.reply_to_message && await isAdmin(msg.chat.id, msg.from.id)) {
-    if (match[1]) {
-      bot.kickChatMember(msg.chat.id, msg.reply_to_message.from.id);
-      bot.unbanChatMember(msg.chat.id, msg.reply_to_message.from.id);
-      bot.sendMessage(msg.chat.id, 'За ' + match[1]+ ' ' + messages.kick.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
-      tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
-    } else {
-      bot.kickChatMember(msg.chat.id, msg.reply_to_message.from.id);
-      bot.unbanChatMember(msg.chat.id, msg.reply_to_message.from.id);
-      bot.sendMessage(msg.chat.id, messages.kick.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
-      tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
+    var user = await bot.getChatMember(msg.chat.id, msg.reply_to_message.from.id);
+    if (user.status == 'member') {
+      if (match[1]) {
+        bot.kickChatMember(msg.chat.id, msg.reply_to_message.from.id);
+        bot.unbanChatMember(msg.chat.id, msg.reply_to_message.from.id);
+        bot.sendMessage(msg.chat.id, 'За ' + match[1]+ ' ' + messages.kick.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
+        tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
+      } else {
+        bot.kickChatMember(msg.chat.id, msg.reply_to_message.from.id);
+        bot.unbanChatMember(msg.chat.id, msg.reply_to_message.from.id);
+        bot.sendMessage(msg.chat.id, messages.kick.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
+        tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
+      }
     }
   }
 });
 
 // Команда /ban, изгоняющая и запечатывающая злых духов (доступна только админам)
-bot.onText(/^\/ban\b ?([^\s]+)? ?(.+)?/, async (msg, match) => {
+bot.onText(/^\/ban\b ?(.+)?/, async (msg, match) => {
   if (msg.chat.type == 'supergroup' && msg.reply_to_message && await isAdmin(msg.chat.id, msg.from.id)) {
-    if (match[1] && match[2]) {
-      bot.kickChatMember(msg.chat.id, msg.reply_to_message.from.id, {until_date: tools.duration(match[1], 'date')});
-      bot.sendMessage(msg.chat.id, 'За ' + match[1]+ ' ' + messages.ban2.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
-      tools.nameToBeShow(msg.reply_to_message.from) +  + '</a>').replace('$duration', tools.duration(match[1])), {parse_mode : 'HTML'});
-    } else if (match[1]) {
-      bot.kickChatMember(msg.chat.id, msg.reply_to_message.from.id, {until_date: tools.duration(match[1], 'date')});
-      bot.sendMessage(msg.chat.id, messages.ban2.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
-      tools.nameToBeShow(msg.reply_to_message.from) + '</a>').replace('$duration', tools.duration(match[1])), {parse_mode : 'HTML'});
+    if (match[1]) {
+      bot.kickChatMember(msg.chat.id, msg.reply_to_message.from.id);
+      bot.sendMessage(msg.chat.id, 'За ' + match[1]+ ' ' + messages.ban.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
+      tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
     } else {
-    bot.kickChatMember(msg.chat.id, msg.reply_to_message.from.id);
-    bot.sendMessage(msg.chat.id, messages.ban1.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
-    tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
+      bot.kickChatMember(msg.chat.id, msg.reply_to_message.from.id);
+      bot.sendMessage(msg.chat.id, messages.ban.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
+      tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
     }
   }
 });
@@ -356,13 +362,25 @@ bot.on('text', async (msg) => {
   if (msg.chat.type == 'private') console.log('[Log]', tools.nameToBeShow(msg.from) + ' (' + msg.from.id + ')' + ' wrote to bot: ' + msg.text);
   for (var id in newMembers) {
     if (msg.from.id == id) {
-      if (moment().diff(moment.unix(newMembers[id]), 'seconds') <= config.antispamPeriod) {
+      if (moment().diff(moment.unix(newMembers[id]), 'minutes') <= config.antispamPeriod) {
         var entities = msg.entities || [];
-        for ( var entity of entities ) {
-          if ( entity.type && entity.type == 'mention' ) return tools.deleteSpam(msg);
+        for (var entity of entities) {
+          if (entity.type && entity.type == 'mention') {
+            var mentioned = msg.text.substr(entity.offset, entity.length);
+            try {
+              var chat = await bot.getChat(mentioned);
+              if (chat && chat.type == 'channel' || chat && chat.type == 'supergroup') {
+                deleteSpam(msg);
+                console.log('[Antispam] mention found ' + mentioned);
+                break;
+              }
+            } catch(err) {
+              console.log('[Antispam] mention check error:', err.message);
+            }
+          }
         }
-        if (/t(?:elegram)?\.me/.test(msg.text)) return tools.deleteSpam(msg);
-        if (msg.forward_from_chat) return tools.deleteSpam(msg);
+        if (/t(?:elegram)?\.me/.test(msg.text)) return deleteSpam(msg);
+        if (msg.forward_from_chat) return deleteSpam(msg);
       }
     }
   };
