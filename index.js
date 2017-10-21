@@ -361,11 +361,12 @@ bot.on('new_chat_members', async (msg) => {
 // Антиспам, который действует для недавно вошедших в чат участников
 // Срабатывает на forward и ссылки типа @username, t.me, telegram.me, удаляя содержащие их сообщения
 // Удалённые сообщения сохраняются и при запросе высылаются пользователю в приват
-bot.on('text', async (msg) => {
-  if (msg.chat.type == 'private') console.log('[Log]', tools.nameToBeShow(msg.from) + ' (' + msg.from.id + ')' + ' wrote to bot: ' + msg.text);
+bot.on('message', async (msg) => {
   for (var id in newMembers) {
-    if (msg.from.id == id) {
-      if (moment().diff(moment.unix(newMembers[id]), 'minutes') <= config.antispamPeriod) {
+    if (msg.from.id == id && moment().diff(moment.unix(newMembers[id]), 'minutes') <= config.antispamPeriod) {
+      if (msg.forward_from_chat) return deleteSpam(msg);
+      if (msg.text) {
+        if (/t(?:elegram)?\.me/.test(msg.text)) return deleteSpam(msg);        
         var entities = msg.entities || [];
         for (var entity of entities) {
           if (entity.type && entity.type == 'mention') {
@@ -374,16 +375,32 @@ bot.on('text', async (msg) => {
               var chat = await bot.getChat(mentioned);
               if (chat && chat.type == 'channel' || chat && chat.type == 'supergroup') {
                 deleteSpam(msg);
-                console.log('[Antispam] mention found ' + mentioned);
+                console.log('[Antispam] mention found in msg.text: ' + mentioned);
                 break;
               }
             } catch(err) {
-              console.log('[Antispam] mention check error:', err.message);
+              console.log('[Antispam] mention check in msg.text fail:', err.message);
+            }
+          }
+        }        
+      } else if (msg.caption) {
+        if (/t(?:elegram)?\.me/.test(msg.caption)) return deleteSpam(msg);        
+        var entities = msg.caption_entities || [];
+        for (var entity of entities) {
+          if (entity.type && entity.type == 'mention') {
+            var mentioned = msg.caption.substr(entity.offset, entity.length);
+            try {
+              var chat = await bot.getChat(mentioned);
+              if (chat && chat.type == 'channel' || chat && chat.type == 'supergroup') {
+                deleteSpam(msg);
+                console.log('[Antispam] mention found in msg.caption: ' + mentioned);
+                break;
+              }
+            } catch(err) {
+              console.log('[Antispam] mention check in msg.caption fail:', err.message);
             }
           }
         }
-        if (/t(?:elegram)?\.me/.test(msg.text)) return deleteSpam(msg);
-        if (msg.forward_from_chat) return deleteSpam(msg);
       }
     }
   };
@@ -398,10 +415,14 @@ bot.on('callback_query', async (msg) => {
     try {
       bot.forwardMessage(msg.from.id, config.channel, find.forwardId);
     } catch (err) {
-      console.log('[Antispam] send deleted message error:', err.message);
+      console.log('[Err] send deleted message error:', err.message);
     }
     });
   }
+});
+
+bot.on('text', async (msg) => {
+  if (msg.chat.type == 'private') console.log('[Log]', tools.nameToBeShow(msg.from) + ' (' + msg.from.id + ')' + ' wrote to bot: ' + msg.text);
 });
 
 // Функция проверяет, является ли пользователь админом
@@ -419,7 +440,7 @@ const isAdmin = async (chatId, userId) => {
 const deleteSpam = async (msg) => {
   forward = await bot.forwardMessage(config.channel, msg.chat.id, msg.message_id, {disable_notification:true});
   report = await bot.sendMessage(msg.chat.id, messages.deleteSpam.replace('$username', '<a href=\"tg://user?id=' + msg.from.id + '/\">' + 
-  nameToBeShow(msg.from) + '</a>'), {parse_mode : 'HTML', reply_markup: {inline_keyboard: [[{text: messages.reportBtn, callback_data: 'sendDelMsg'}]]}});
+  tools.nameToBeShow(msg.from) + '</a>'), {parse_mode : 'HTML', reply_markup: {inline_keyboard: [[{text: messages.reportBtn, callback_data: 'sendDelMsg'}]]}});
   mongoDeleted.insertOne({msg, reportId: report.message_id, forwardId: forward.message_id});
   bot.deleteMessage(msg.chat.id, msg.message_id);
 };
