@@ -12,9 +12,11 @@ var report, forward;
 var newMembers = {};
 
 // Хак для того, чтобы не зависнуть на стадии building во время развёртывания в now
-const {createServer} = require('http');
-const server = createServer(() => {});
-server.listen(3000);
+const http = require('http');
+http.createServer(function (req, res) {
+  res.write('Hello World!');
+  res.end();
+}).listen(8080);
 
 MongoClient.connect(config.mongoConnectUrl, (err, database) => {
   if (err) {
@@ -64,7 +66,7 @@ bot.onText(/^\/fav\b ?(.+)?/, (msg, match) => {
       if (msg.reply_to_message.from.id != botMe.id) {
         mongoFavs.findOne({messageId: msg.reply_to_message.message_id}, function (err, fav) {
           if (!fav) {
-            if (match[1] && match[1].length < 50) {
+            if (match[1] && match[1].length < 80) {
               var caption = tools.capitalize(match[1]);
               mongoFavs.insertOne({messageId: msg.reply_to_message.message_id, messageDate: msg.reply_to_message.date, favCreatorId: msg.from.id, favCaption: caption});
               bot.sendMessage(msg.chat.id, messages.favAdd.replace('$fav', '«' + caption + '»'));
@@ -409,20 +411,17 @@ bot.on('message', async (msg) => {
 // Нажатие на кнопку пересылает сохранённое в канале сообщение пользователю в приват
 bot.on('callback_query', async (msg) => {
   if (msg.data === 'sendDelMsg') {
-    console.log('[Log]', tools.nameToBeShow(msg.from) + ' (' + msg.from.id + ')' + ' pressed the sendDelMsg button under ' + msg.message.message_id + ' bot message');
-    var answer = await bot.answerCallbackQuery(msg.id);
+    console.log('[Log]', tools.nameToBeShow(msg.from) + ' (' + msg.from.id + ') pressed the sendDelMsg button under (' + msg.message.message_id + ') bot message');
     mongoDeleted.findOne({reportId: msg.message.message_id}, function (err, find) {
-    try {
-      bot.forwardMessage(msg.from.id, config.channel, find.forwardId);
-    } catch (err) {
-      console.log('[Err] send deleted message error:', err.message);
-    }
-    });
+    bot.forwardMessage(msg.from.id, config.channel, find.forwardId)
+      .then(data => bot.answerCallbackQuery(msg.id, messages.reSend))
+      .catch(error => bot.answerCallbackQuery(msg.id, messages.reSendErr, true));
+    })
   }
 });
 
 bot.on('text', async (msg) => {
-  if (msg.chat.type == 'private') console.log('[Log]', tools.nameToBeShow(msg.from) + ' (' + msg.from.id + ')' + ' wrote to bot: ' + msg.text);
+  if (msg.chat.type == 'private') console.log('[Log]', tools.nameToBeShow(msg.from) + ' (' + msg.from.id + ') wrote to bot: ' + msg.text);
 });
 
 // Функция проверяет, является ли пользователь админом
