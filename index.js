@@ -343,11 +343,10 @@ bot.on('new_chat_members', async (msg) => {
     await bot.sendPhoto(msg.chat.id, messages.kickBotImg, {caption: messages.kickBotMsg});
     return;
   };
-  newMembers[msg.new_chat_member.id] = msg.date; // Для антиспама
   mongoUsers.findOne({userId: msg.new_chat_member.id}, function (err, user) {
     if (!user) {
       bot.sendMessage(msg.chat.id, tools.random(messages.welcomeNew).replace('$name', tools.nameToBeShow(msg.new_chat_member)), {parse_mode : 'markdown'});
-      mongoUsers.insertOne({userId: msg.new_chat_member.id, joinDate: msg.date});
+      mongoUsers.insertOne({userId: msg.new_chat_member.id, joinDate: msg.date, antiSpam: 1});
     } else {
       if (moment().diff(moment.unix(user.joinDate), 'hours') <= config.joinPeriod) {
         bot.sendMessage(msg.chat.id, tools.random(messages.welcomeRet1).replace('$name', tools.nameToBeShow(msg.new_chat_member)));
@@ -364,11 +363,17 @@ bot.on('new_chat_members', async (msg) => {
 // Срабатывает на forward и ссылки типа @username, t.me, telegram.me, удаляя содержащие их сообщения
 // Удалённые сообщения сохраняются и при запросе высылаются пользователю в приват
 bot.on('message', async (msg) => {
-  for (var id in newMembers) {
-    if (msg.from.id == id && moment().diff(moment.unix(newMembers[id]), 'minutes') <= config.antispamPeriod) {
-      if (msg.forward_from_chat) return deleteSpam(msg);
-      if (msg.text) {
-        if (/t(?:elegram)?\.me/.test(msg.text)) return deleteSpam(msg);        
+  mongoUsers.findOne({userId: msg.from.id, antiSpam: 1}, async function (err, user) {
+    var deleted = false;
+    if (user) {
+      if (msg.forward_from_chat) {
+        deleteSpam(msg);
+        deleted = true;
+      } else if (msg.text) {
+        if (/t(?:elegram)?\.me/.test(msg.text)) {
+          deleteSpam(msg);
+          deleted = true;
+        }
         var entities = msg.entities || [];
         for (var entity of entities) {
           if (entity.type && entity.type == 'mention') {
@@ -377,6 +382,7 @@ bot.on('message', async (msg) => {
               var chat = await bot.getChat(mentioned);
               if (chat && chat.type == 'channel' || chat && chat.type == 'supergroup') {
                 deleteSpam(msg);
+                deleted = true;
                 console.log('[Antispam] mention found in msg.text: ' + mentioned);
                 break;
               }
@@ -386,7 +392,10 @@ bot.on('message', async (msg) => {
           }
         }        
       } else if (msg.caption) {
-        if (/t(?:elegram)?\.me/.test(msg.caption)) return deleteSpam(msg);        
+        if (/t(?:elegram)?\.me/.test(msg.caption)) {
+          deleteSpam(msg);   
+          deleted = true;
+        }  
         var entities = msg.caption_entities || [];
         for (var entity of entities) {
           if (entity.type && entity.type == 'mention') {
@@ -395,6 +404,7 @@ bot.on('message', async (msg) => {
               var chat = await bot.getChat(mentioned);
               if (chat && chat.type == 'channel' || chat && chat.type == 'supergroup') {
                 deleteSpam(msg);
+                deleted = true;
                 console.log('[Antispam] mention found in msg.caption: ' + mentioned);
                 break;
               }
@@ -404,8 +414,12 @@ bot.on('message', async (msg) => {
           }
         }
       }
+      if (deleted == false) {
+        mongoUsers.update({userId: msg.from.id}, {$unset: {antiSpam: ''}});
+        console.log('[Antispam] turned off for ' + tools.nameToBeShow(msg.from) + ' (' + msg.from.id + ')');
+      }
     }
-  };
+  });
 });
 
 // Нажатие на кнопку пересылает сохранённое в канале сообщение пользователю в приват
