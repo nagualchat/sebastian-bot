@@ -66,7 +66,7 @@ bot.onText(/^\/fav\b ?(.+)?/, (msg, match) => {
       if (msg.reply_to_message.from.id != botMe.id) {
         mongoFavs.findOne({messageId: msg.reply_to_message.message_id}, function (err, fav) {
           if (!fav) {
-            if (match[1] && match[1].length < 80) {
+            if (match[1] && match[1].length <= 80) {
               var caption = tools.capitalize(match[1]);
               mongoFavs.insertOne({messageId: msg.reply_to_message.message_id, messageDate: msg.reply_to_message.date, favCreatorId: msg.from.id, favCaption: caption});
               bot.sendMessage(msg.chat.id, messages.favAdd.replace('$fav', '«' + caption + '»'));
