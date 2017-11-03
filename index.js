@@ -251,55 +251,6 @@ bot.onText(/^\/del\b ?(.+)?/, async (msg, match) => {
     };
 });
 
-// Начисление очков благодарности за спасибо
-bot.onText(/спасибо|благодарю|^(спс|thx)(\.|\!)?$/i, (msg) => {
-  if (msg.reply_to_message && msg.reply_to_message.from.id != msg.from.id && msg.reply_to_message.from.id != botMe.id) {
-    mongoUsers.findOne({userId: msg.reply_to_message.from.id}, function (err, user) {
-      if (!user) {
-        mongoUsers.insertOne({userId: msg.reply_to_message.from.id, repPoints: 1});
-        bot.sendMessage(msg.chat.id, tools.random(messages.repThxFirst).replace('$name', tools.nameToBeShow(msg.reply_to_message.from)).replace('$points', count));
-      } else if (!user.repPoints) {
-        mongoUsers.update({userId: msg.reply_to_message.from.id}, {$set: {repPoints: 1}})
-        bot.sendMessage(msg.chat.id, tools.random(messages.repThxFirst).replace('$name', tools.nameToBeShow(msg.reply_to_message.from)).replace('$points', count));
-      } else {
-        var count = user.repPoints + 1;
-        mongoUsers.update({userId: msg.reply_to_message.from.id}, {$set: {repPoints: count}})
-        bot.sendMessage(msg.chat.id, tools.random(messages.repThx).replace('$name', tools.nameToBeShow(msg.reply_to_message.from)).replace('$points', count));
-      }
-    })
-  }
-});
-
-// Начисление очков благодарности за плюсы
-bot.onText(/плюсую|^(👍|\+)(\.|\!)?$/i, (msg) => {  
-  if (msg.reply_to_message && msg.reply_to_message.from.id != msg.from.id && msg.reply_to_message.from.id != botMe.id) {
-    mongoUsers.findOne({userId: msg.reply_to_message.from.id}, function (err, user) {
-      if (!user) {
-        mongoUsers.insertOne({userId: msg.reply_to_message.from.id, repPoints: 1});
-        bot.sendMessage(msg.chat.id, tools.random(messages.repPlusFirst).replace('$name', tools.nameToBeShow(msg.reply_to_message.from)).replace('$points', count));
-      } else if (!user.repPoints) {
-        mongoUsers.update({userId: msg.reply_to_message.from.id}, {$set: {repPoints: 1}})
-        bot.sendMessage(msg.chat.id, tools.random(messages.repPlusFirst).replace('$name', tools.nameToBeShow(msg.reply_to_message.from)).replace('$points', count));
-      } else {
-        var count = user.repPoints + 1;
-        mongoUsers.update({userId: msg.reply_to_message.from.id}, {$set: {repPoints: count}})
-        bot.sendMessage(msg.chat.id, tools.random(messages.repPlus).replace('$name', tools.nameToBeShow(msg.reply_to_message.from)).replace('$points', count));
-      }
-    })
-  }
-});
-
-// Команда /me, отображающая накопленные очки благодарности
-bot.onText(/^\/me$/, (msg) => {
-  mongoUsers.findOne({userId: msg.from.id}, function (err, user) {
-    if (!user || user.repPoints == 0) {
-      bot.sendMessage(msg.chat.id, messages.showRep0.replace('$name', tools.nameToBeShow(msg.from)));
-    } else {
-      bot.sendMessage(msg.chat.id, messages.showRep.replace('$name', tools.nameToBeShow(msg.from)).replace('$points', user.repPoints));      
-    }
-  })
-});
-
 // Ответ бота на пожелания доброго утра и спокойной ночи
 bot.onText(/добр\S* утр\S*|утр\S* добро\S*|^(утра|утречка)(\.|\!)?$/i, (msg) => {
   if (!lastGoodDay) {
