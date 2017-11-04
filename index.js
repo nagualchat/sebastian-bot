@@ -47,7 +47,7 @@ bot.onText(/^\/start$/, (msg) => {
   }
 });
 
-bot.onText(/^\/help$/, (msg) => {
+bot.onText(/^\/help$/, async (msg) => {
   bot.sendMessage(msg.chat.id, messages.help, {parse_mode : 'markdown'});
 });
 
@@ -128,6 +128,29 @@ bot.onText(/^\/d\b ?(.+)?/, async (msg, match) => {
         }
       })
     }
+});
+
+// Команда /mod, предназначенная для управлением модераторами
+bot.onText(/^\/mod\b/, async (msg, match) => {
+  if (msg.chat.type == 'supergroup' && await isAdmin(config.group, msg.from.id )) {
+    if (msg.reply_to_message && msg.reply_to_message.from.id != botMe.id) {
+      mongoUsers.findOne({userId: msg.reply_to_message.from.id}, function (err, user) {
+        if (!user) {
+          mongoUsers.insertOne({userId: msg.reply_to_message.from.id, mod: true});
+          bot.sendMessage(msg.chat.id, messages.modAdd.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
+          tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
+        } else if (!user.mod){
+          mongoUsers.update({userId: msg.reply_to_message.from.id}, {$set: {mod: true}})
+          bot.sendMessage(msg.chat.id, messages.modAdd.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
+          tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
+        } else {
+          mongoUsers.update({userId: msg.reply_to_message.from.id}, {$unset: {mod: ''}});
+          bot.sendMessage(msg.chat.id, messages.modDel.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
+          tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
+        }
+      })
+    }
+  }
 });
 
 // Команда /mute, лишающая пользователя возможности оправлять в чат сообщения
@@ -241,30 +264,32 @@ bot.onText(/^\/ban\b ?(.+)?/, async (msg, match) => {
 // Если команда вызвана с агрументом, то он выводится как причина удаления
 // Удалённые сообщения сохраняются и при запросе высылаются пользователю в приват
 bot.onText(/^\/del\b ?(.+)?/, async (msg, match) => {
-  if (msg.chat.type == 'supergroup' && msg.reply_to_message && await isAdmin(msg.chat.id, msg.from.id)) {
-    forward = await bot.forwardMessage(config.channel, msg.chat.id, msg.reply_to_message.message_id, {disable_notification:true});  
-    if (match[1]) {
-      report = await bot.sendMessage(msg.chat.id, messages.deleteDel2.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
-      tools.nameToBeShow(msg.reply_to_message.from) + '</a>').replace('$reason', match[1]), {parse_mode : 'HTML', reply_markup: {inline_keyboard: [[{text: 'Показать', callback_data: 'sendDelMsg'}]]}});
-    } else {
-      report = await bot.sendMessage(msg.chat.id, messages.deleteDel1.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
-      tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML', reply_markup: {inline_keyboard: [[{text: messages.reportBtn, callback_data: 'sendDelMsg'}]]}});
+  if (msg.chat.type == 'supergroup' && msg.reply_to_message) {
+    if (await isAdmin(msg.chat.id, msg.from.id) || await isMod(msg.from.id)) {
+      forward = await bot.forwardMessage(config.channel, msg.chat.id, msg.reply_to_message.message_id, {disable_notification:true});  
+      if (match[1]) {
+        report = await bot.sendMessage(msg.chat.id, messages.deleteDel2.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
+        tools.nameToBeShow(msg.reply_to_message.from) + '</a>').replace('$reason', match[1]), {parse_mode : 'HTML', reply_markup: {inline_keyboard: [[{text: 'Показать', callback_data: 'sendDelMsg'}]]}});
+      } else {
+        report = await bot.sendMessage(msg.chat.id, messages.deleteDel1.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
+        tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML', reply_markup: {inline_keyboard: [[{text: messages.reportBtn, callback_data: 'sendDelMsg'}]]}});
+      }
+        mongoDeleted.insertOne({reportId: report.message_id, forwardId: forward.message_id});
+        bot.deleteMessage(msg.chat.id, msg.reply_to_message.message_id);
+      };
     }
-      mongoDeleted.insertOne({reportId: report.message_id, forwardId: forward.message_id});
-      bot.deleteMessage(msg.chat.id, msg.reply_to_message.message_id);
-    };
 });
 
 // Команда /dels, предназначенная для массового удаления сообщений
 // Первый аргумент - перечисленные через запятую ID сообщений без пробелов
 // Второй агрумент (если указан) выводится как причина удаления
 bot.onText(/^\/dels\b (\d+(?:,\d+)+) ?(.+)?/, async (msg, match) => {
-  if (await isAdmin(msg.chat.id, msg.from.id)) {  
+  if (await isAdmin(msg.chat.id, msg.from.id) || await isMod(msg.from.id)) {
     var ii = 0, message = '', names = '';
     var usrList = {}, forwList = []; 
     var delList = match[1].split(',');
     // Каждое сообщение из списка пересылается в канал и удаляется из чата 
-    // В forwList[] сохраняется ID поста в канале, а в usrList[] - имена написавших сообщения и их кол-во
+    // В forwList[] сохраняется ID сообщения из канала, а в usrList[] - имена написавших посты и их кол-во
     for (var i = 0; i < delList.length; i++) {
       forward = await bot.forwardMessage(config.channel, msg.chat.id, delList[i], {disable_notification:true});
       forwList.push(forward.message_id);
@@ -447,6 +472,15 @@ const isAdmin = async (chatId, userId) => {
       return false;
     };
 };
+
+const isMod = async (userId) => {
+  var user = await mongoUsers.findOne({userId: userId, mod: true});
+    if (user) {
+      return true;
+    } else {
+      return false;
+    }
+}
 
 // Функция удаления сообщений для антиспама
 // Перед удалением сообщение пересылается в канал на хранение
