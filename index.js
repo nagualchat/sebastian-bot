@@ -115,7 +115,7 @@ bot.onText(/^\/e\b ?([^\s]+)? ?(.+)?/, async (msg, match) => {
     }
 });
 
-// Команда /d, удаляющее закладку
+// Команда /d, удаляющая закладку
 bot.onText(/^\/d\b ?(.+)?/, async (msg, match) => {
   if (match[1] && await isAdmin(config.group, msg.from.id)) {
     var id = Number(match[1]);
@@ -256,13 +256,15 @@ bot.onText(/^\/del\b ?(.+)?/, async (msg, match) => {
 });
 
 // Команда /dels, предназначенная для массового удаления сообщений
-// Первый аргумент - перечисленые через запятую ID сообщений без пробелов
+// Первый аргумент - перечисленные через запятую ID сообщений без пробелов
 // Второй агрумент (если указан) выводится как причина удаления
 bot.onText(/^\/dels\b (\d+(?:,\d+)+) ?(.+)?/, async (msg, match) => {
   if (await isAdmin(msg.chat.id, msg.from.id)) {  
     var ii = 0, message = '', names = '';
     var usrList = {}, forwList = []; 
     var delList = match[1].split(',');
+    // Каждое сообщение из списка пересылается в канал и удаляется из чата 
+    // В forwList[] сохраняется ID поста в канале, а в usrList[] - имена написавших сообщения и их кол-во
     for (var i = 0; i < delList.length; i++) {
       forward = await bot.forwardMessage(config.channel, msg.chat.id, delList[i], {disable_notification:true});
       forwList.push(forward.message_id);
@@ -270,6 +272,7 @@ bot.onText(/^\/dels\b (\d+(?:,\d+)+) ?(.+)?/, async (msg, match) => {
       var name = '<a href=\"tg://user?id=' + forward.forward_from.id + '/\">' + tools.nameToBeShow(forward.forward_from) + '</a>'
       usrList[name] = (usrList[name] || 0) + 1;
     }
+    // По содержимому usrList[] составляется отчёт о том, сколько чьих сообщений было удалено
     for (var usr in usrList) {
       ii++;
       if (ii < Object.keys(usrList).length) {
