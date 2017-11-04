@@ -1,6 +1,6 @@
-const TelegramBot = require('node-telegram-bot-api'); 
 const MongoClient = require("mongodb").MongoClient;
 const moment = require('moment');
+const TelegramBot = require('node-telegram-bot-api'); 
 
 const tools = require('./tools');
 const config = require('./config/config');
@@ -33,7 +33,11 @@ bot.getMe().then((res) => { botMe = res });
 bot.getChat(config.group).then((res) => { group = res });
 
 bot.on('polling_error', (err) => {
-  console.log('[Telegram] polling error:', err.message);
+  if (err.message.match(/502 Bad Gateway/i)) {
+    console.log('[Telegram] polling error: Error parsing Telegram response (502 Bad Gateway)');
+  } else {
+    console.log('[Telegram] polling error:', err.message);
+  }
 });
 
 // Вывод справок
@@ -51,7 +55,7 @@ bot.onText(/^\/admin$/, (msg) => {
   bot.sendMessage(msg.chat.id, messages.admin, {parse_mode : 'markdown'});
 });
 
-// Команда /say, отправляющая сообщение в группу от лица бота (доступна только админам)
+// Команда /say, отправляющая сообщение в группу от лица бота
 bot.onText(/^\/say (.+)/, async (msg, match) => {
   if (msg.chat.type == 'private' &&  await isAdmin(config.group, msg.from.id)) {
     console.log(match[1]);
@@ -96,7 +100,7 @@ bot.onText(/^\/favs\b/, (msg, match) => {
   })
 });
 
-// Команда /e, позволяющая изменить имя закладки (доступна только админам)
+// Команда /e, позволяющая изменить имя закладки
 bot.onText(/^\/e\b ?([^\s]+)? ?(.+)?/, async (msg, match) => {
   if (match[1] && match[2] && await isAdmin(config.group, msg.from.id)) {
     var id = Number(match[1]);
@@ -111,7 +115,7 @@ bot.onText(/^\/e\b ?([^\s]+)? ?(.+)?/, async (msg, match) => {
     }
 });
 
-// Команда /d, удаляющее закладку (доступна только админам)
+// Команда /d, удаляющее закладку
 bot.onText(/^\/d\b ?(.+)?/, async (msg, match) => {
   if (match[1] && await isAdmin(config.group, msg.from.id)) {
     var id = Number(match[1]);
@@ -126,7 +130,7 @@ bot.onText(/^\/d\b ?(.+)?/, async (msg, match) => {
     }
 });
 
-// Команда /mute, лишающая пользователя возможности оправлять в чат сообщения (доступна только админам)
+// Команда /mute, лишающая пользователя возможности оправлять в чат сообщения
 bot.onText(/^\/mute\b ?([^\s]+)? ?(.+)?/, async (msg, match) => {
   if (msg.chat.type == 'supergroup' && msg.reply_to_message && await isAdmin(msg.chat.id, msg.from.id)) {
     if (match[1] && match[2]) {
@@ -145,7 +149,7 @@ bot.onText(/^\/mute\b ?([^\s]+)? ?(.+)?/, async (msg, match) => {
   }
 });
 
-// Команда /mute2, лишающая пользователя возможности спамить стикерами, картинками и другим медиа-контентом (доступна только админам)
+// Команда /mute2, лишающая пользователя возможности спамить стикерами, картинками и другим медиа-контентом
 bot.onText(/^\/mute2\b ?([^\s]+)? ?(.+)?/, async (msg, match) => {
   if (msg.chat.type == 'supergroup' && msg.reply_to_message && await isAdmin(msg.chat.id, msg.from.id)) {
     if (match[1] && match[2]) {
@@ -181,7 +185,7 @@ bot.onText(/^\/mute2\b ?([^\s]+)? ?(.+)?/, async (msg, match) => {
   }
 });
 
-// Команда /unmute, снимающая все ограничения (доступна только админам)
+// Команда /unmute, снимающая все ограничения
 bot.onText(/^\/unmute$/, async (msg, match) => {
   if (msg.chat.type == 'supergroup' && msg.reply_to_message && await isAdmin(msg.chat.id, msg.from.id)) {
      bot.restrictChatMember(msg.chat.id, msg.reply_to_message.from.id, { 
@@ -195,7 +199,7 @@ bot.onText(/^\/unmute$/, async (msg, match) => {
   }
 });
 
-// Команда /kick, изгоняющая злых духов (доступна только админам)
+// Команда /kick, изгоняющая злых духов
 bot.onText(/^\/kick\b ?(.+)?/, async (msg, match) => {
   if (msg.chat.type == 'supergroup' && msg.reply_to_message && await isAdmin(msg.chat.id, msg.from.id)) {
     var user = await bot.getChatMember(msg.chat.id, msg.reply_to_message.from.id);
@@ -218,7 +222,7 @@ bot.onText(/^\/kick\b ?(.+)?/, async (msg, match) => {
   }
 });
 
-// Команда /ban, изгоняющая и запечатывающая злых духов (доступна только админам)
+// Команда /ban, изгоняющая и запечатывающая злых духов
 bot.onText(/^\/ban\b ?(.+)?/, async (msg, match) => {
   if (msg.chat.type == 'supergroup' && msg.reply_to_message && await isAdmin(msg.chat.id, msg.from.id)) {
     if (match[1]) {
@@ -233,7 +237,7 @@ bot.onText(/^\/ban\b ?(.+)?/, async (msg, match) => {
   }
 });
 
-// Команда /del, удаляющая процитированное сообщение (доступна только админам)
+// Команда /del, удаляющая процитированное сообщение
 // Если команда вызвана с агрументом, то он выводится как причина удаления
 // Удалённые сообщения сохраняются и при запросе высылаются пользователю в приват
 bot.onText(/^\/del\b ?(.+)?/, async (msg, match) => {
@@ -246,9 +250,46 @@ bot.onText(/^\/del\b ?(.+)?/, async (msg, match) => {
       report = await bot.sendMessage(msg.chat.id, messages.deleteDel1.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
       tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML', reply_markup: {inline_keyboard: [[{text: messages.reportBtn, callback_data: 'sendDelMsg'}]]}});
     }
-      mongoDeleted.insertOne({msg, reportId: report.message_id, forwardId: forward.message_id});
+      mongoDeleted.insertOne({reportId: report.message_id, forwardId: forward.message_id});
       bot.deleteMessage(msg.chat.id, msg.reply_to_message.message_id);
     };
+});
+
+// Команда /dels, предназначенная для массового удаления сообщений
+// Первый аргумент - перечисленые через запятую ID сообщений без пробелов
+// Второй агрумент (если указан) выводится как причина удаления
+bot.onText(/^\/dels\b (\d+(?:,\d+)+) ?(.+)?/, async (msg, match) => {
+  if (await isAdmin(msg.chat.id, msg.from.id)) {  
+    var ii = 0, message = '', names = '';
+    var usrList = {}, forwList = []; 
+    var delList = match[1].split(',');
+    for (var i = 0; i < delList.length; i++) {
+      forward = await bot.forwardMessage(config.channel, msg.chat.id, delList[i], {disable_notification:true});
+      forwList.push(forward.message_id);
+      bot.deleteMessage(msg.chat.id, delList[i]);
+      var name = '<a href=\"tg://user?id=' + forward.forward_from.id + '/\">' + tools.nameToBeShow(forward.forward_from) + '</a>'
+      usrList[name] = (usrList[name] || 0) + 1;
+    }
+    for (var usr in usrList) {
+      ii++;
+      if (ii < Object.keys(usrList).length) {
+        names += usrList[usr] + ' ' + usr + ', ';
+      } else {
+        names += usrList[usr] + ' ' + usr;
+      }
+      if (ii == 1) {
+        message =  messages.deleteDels1.replace('$count', tools.msgDecl(usrList[usr])).replace('$name', usr);
+      } else if (ii >= 2) {
+        message = messages.deleteDels2.replace('$names', names);
+      }
+    }
+    if (match[2]) {
+      report = await bot.sendMessage(msg.chat.id, message + ' за ' + match[2] + '.', {parse_mode : 'HTML', reply_markup: {inline_keyboard: [[{text: messages.reportBtn, callback_data: 'sendDelMsg'}]]}});
+    } else {
+      report = await bot.sendMessage(msg.chat.id, message + '.', {parse_mode : 'HTML', reply_markup: {inline_keyboard: [[{text: messages.reportBtn, callback_data: 'sendDelMsg'}]]}});
+    }
+    mongoDeleted.insertOne({reportId: report.message_id, forwardId: forwList});
+  }
 });
 
 // Ответ бота на пожелания доброго утра и спокойной ночи
@@ -272,8 +313,8 @@ bot.onText(/спокойной ночи|доброй ночи|приятных �
   }
 });
 
-// В ответ на вопрос типа "Себастьян, 1 или 2?" бот случайно выбирает один из перечисленных вариантов.
-// А на вопросы вроде "Себастьян, чтоугодно?" случайным образом отвечает да/нет.
+// В ответ на вопрос типа "Себастьян, 1 или 2?" случайно выбирается один из перечисленных вариантов.
+// На вопросы вроде "Себастьян, чтоугодно?" случайным образом отвечает да/нет.
 bot.on('text', (msg) => {
   const answer = msg.text.match(/себастьян(\,)? (.+)\?$/i);
   const answerChoice = msg.text.match(/себастьян(\,)? (.+) или (.+)\?$/i);
@@ -334,7 +375,6 @@ bot.on('message', async (msg) => {
               if (chat && chat.type == 'channel' || chat && chat.type == 'supergroup') {
                 deleteSpam(msg);
                 deleted = true;
-                console.log('[Antispam] mention found in msg.text: ' + mentioned);
                 break;
               }
             } catch(err) {
@@ -356,7 +396,6 @@ bot.on('message', async (msg) => {
               if (chat && chat.type == 'channel' || chat && chat.type == 'supergroup') {
                 deleteSpam(msg);
                 deleted = true;
-                console.log('[Antispam] mention found in msg.caption: ' + mentioned);
                 break;
               }
             } catch(err) {
@@ -367,7 +406,6 @@ bot.on('message', async (msg) => {
       }
       if (deleted == false) {
         mongoUsers.update({userId: msg.from.id}, {$unset: {antiSpam: ''}});
-        console.log('[Antispam] turned off for ' + tools.nameToBeShow(msg.from) + ' (' + msg.from.id + ')');
       }
     }
   });
@@ -378,9 +416,17 @@ bot.on('callback_query', async (msg) => {
   if (msg.data === 'sendDelMsg') {
     console.log('[Log]', tools.nameToBeShow(msg.from) + ' (' + msg.from.id + ') pressed the sendDelMsg button under (' + msg.message.message_id + ') bot message');
     mongoDeleted.findOne({reportId: msg.message.message_id}, function (err, find) {
-    bot.forwardMessage(msg.from.id, config.channel, find.forwardId)
-      .then(data => bot.answerCallbackQuery(msg.id, messages.reSend))
-      .catch(error => bot.answerCallbackQuery(msg.id, messages.reSendErr, true));
+      if (find.forwardId.length) {
+        for (var i = 0; i < find.forwardId.length; i++) {
+          bot.forwardMessage(msg.from.id, config.channel, find.forwardId[i])
+            .then(data => bot.answerCallbackQuery(msg.id, messages.reSend))
+            .catch(error => console.log(error.message));
+        }
+      } else {
+        bot.forwardMessage(msg.from.id, config.channel, find.forwardId)
+        .then(data => bot.answerCallbackQuery(msg.id, messages.reSend))
+        .catch(error => console.log(error.message));
+      }
     })
   }
 });

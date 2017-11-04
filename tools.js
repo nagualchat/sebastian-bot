@@ -27,13 +27,20 @@ function declension(number, titles) {
     return number + ' ' + titles[ (number%100>4 && number%100<20)? 2 : cases[(number%10<5)?number%10:5] ];  
 }
 
+function msgDecl(match) {
+  var msgname = ['сообщение', 'сообщения', 'сообщений'];
+  return declension(match, msgname);
+}
+
+
 // Функция отображения срока наказания для команд /mute, mute2 и /ban
 function duration(match, mode) {
   var regexp = match.match(/(\d*)(\S)/i);
   // Склонения можно определить, примеряя к цифрам 1, 3 и 5
   var dayname = ['день', 'дня', 'дней'];
   var hourname = ['час', 'часа', 'часов'];
-  if (regexp[2] == 'd') {
+
+  if (regexp[2] == 'd') { 
     if (mode == 'date') {
       return date = moment().add(regexp[1], 'days').unix();
     } else {
@@ -44,7 +51,7 @@ function duration(match, mode) {
         return date = moment().add(regexp[1], 'hours').unix();
     } else {
       return declension(regexp[1], hourname);
-    }       
+    }
   } else return 'err';
 }; 
 
@@ -52,4 +59,5 @@ exports.nameToBeShow = nameToBeShow;
 exports.random = random;
 exports.capitalize = capitalize;
 exports.declension = declension;
+exports.msgDecl = msgDecl;
 exports.duration = duration;
