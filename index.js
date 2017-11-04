@@ -34,7 +34,7 @@ bot.getChat(config.group).then((res) => { group = res });
 
 bot.on('polling_error', (err) => {
   if (err.message.match(/502 Bad Gateway/i)) {
-    console.log('[Telegram] polling error: Error parsing Telegram response (502 Bad Gateway)');
+    console.log('[Telegram] polling error: EPARSE: Error parsing Telegram response (502 Bad Gateway)');
   } else {
     console.log('[Telegram] polling error:', err.message);
   }

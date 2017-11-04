@@ -39,7 +39,6 @@ function duration(match, mode) {
   // Склонения можно определить, примеряя к цифрам 1, 3 и 5
   var dayname = ['день', 'дня', 'дней'];
   var hourname = ['час', 'часа', 'часов'];
-
   if (regexp[2] == 'd') { 
     if (mode == 'date') {
       return date = moment().add(regexp[1], 'days').unix();
