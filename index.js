@@ -47,12 +47,17 @@ bot.onText(/^\/start$/, (msg) => {
   }
 });
 
-bot.onText(/^\/help$/, async (msg) => {
+bot.onText(/^\/help$/, (msg) => {
   bot.sendMessage(msg.chat.id, messages.help, {parse_mode : 'markdown'});
 });
 
-bot.onText(/^\/admin$/, (msg) => {
-  bot.sendMessage(msg.chat.id, messages.admin, {parse_mode : 'markdown'});
+bot.onText(/^\/ahelp$/, (msg) => {
+  bot.sendMessage(msg.chat.id, messages.ahelp, {parse_mode : 'markdown'});
+});
+
+
+bot.onText(/^\/mhelp$/, (msg) => {
+  bot.sendMessage(msg.chat.id, messages.mhelp, {parse_mode : 'markdown'});
 });
 
 // Команда /say, отправляющая сообщение в группу от лица бота
@@ -132,8 +137,8 @@ bot.onText(/^\/d\b ?(.+)?/, async (msg, match) => {
 
 // Команда /mod, предназначенная для управлением модераторами
 bot.onText(/^\/mod\b/, async (msg, match) => {
-  if (msg.chat.type == 'supergroup' && await isAdmin(config.group, msg.from.id )) {
-    if (msg.reply_to_message && msg.reply_to_message.from.id != botMe.id) {
+  if (msg.reply_to_message) {
+    if (msg.chat.type == 'supergroup' && await isAdmin(config.group, msg.from.id )) {
       mongoUsers.findOne({userId: msg.reply_to_message.from.id}, function (err, user) {
         if (!user) {
           mongoUsers.insertOne({userId: msg.reply_to_message.from.id, mod: true});
@@ -150,112 +155,131 @@ bot.onText(/^\/mod\b/, async (msg, match) => {
         }
       })
     }
+  } else { // Выводит списов модов, если нет цитирования
+    mongoUsers.find({mod: true}).toArray(async function(err, mods) {
+      var s = [];
+      for (let mod of mods) {
+        var inf = await bot.getChatMember(config.group, mod.userId);
+        s.push('<a href=\"tg://user?id=' + mod.userId + '/\">' + tools.nameToBeShow(inf.user) + '</a>');
+      }
+      bot.sendMessage(msg.chat.id, messages.modList + s.join('\n'), {parse_mode : 'HTML', disable_web_page_preview: 'true'});
+    })
   }
 });
 
 // Команда /mute, лишающая пользователя возможности оправлять в чат сообщения
 bot.onText(/^\/mute\b ?([^\s]+)? ?(.+)?/, async (msg, match) => {
-  if (msg.chat.type == 'supergroup' && msg.reply_to_message && await isAdmin(msg.chat.id, msg.from.id)) {
-    if (match[1] && match[2]) {
-      bot.restrictChatMember(msg.chat.id, msg.reply_to_message.from.id, {until_date: tools.duration(match[1], 'date'), can_send_messages: false});
-      bot.sendMessage(msg.chat.id, 'За ' + match[2] + ' ' + messages.restrictVoice2.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
-      tools.nameToBeShow(msg.reply_to_message.from) + '</a>').replace('$duration', tools.duration(match[1])), {parse_mode : 'HTML'});
-    } else if (match[1]) {
-      bot.restrictChatMember(msg.chat.id, msg.reply_to_message.from.id, {until_date: tools.duration(match[1], 'date'), can_send_messages: false});
-      bot.sendMessage(msg.chat.id, messages.restrictVoice2.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
-      tools.nameToBeShow(msg.reply_to_message.from) + '</a>').replace('$duration', tools.duration(match[1])), {parse_mode : 'HTML'});
-    } else {
-      bot.restrictChatMember(msg.chat.id, msg.reply_to_message.from.id, {can_send_messages: false});
-      bot.sendMessage(msg.chat.id, messages.restrictVoice1.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.d + '/\">' + 
-      tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
+  if (msg.chat.type == 'supergroup' && msg.reply_to_message) {
+    if (await isAdmin(msg.chat.id, msg.from.id) || await isMod(msg.from.id)) {
+      if (match[1] && match[2]) {
+        bot.restrictChatMember(msg.chat.id, msg.reply_to_message.from.id, {until_date: tools.duration(match[1], 'date'), can_send_messages: false});
+        bot.sendMessage(msg.chat.id, 'За ' + match[2] + ' ' + messages.restrictVoice2.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
+        tools.nameToBeShow(msg.reply_to_message.from) + '</a>').replace('$duration', tools.duration(match[1])), {parse_mode : 'HTML'});
+      } else if (match[1]) {
+        bot.restrictChatMember(msg.chat.id, msg.reply_to_message.from.id, {until_date: tools.duration(match[1], 'date'), can_send_messages: false});
+        bot.sendMessage(msg.chat.id, messages.restrictVoice2.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
+        tools.nameToBeShow(msg.reply_to_message.from) + '</a>').replace('$duration', tools.duration(match[1])), {parse_mode : 'HTML'});
+      } else {
+        bot.restrictChatMember(msg.chat.id, msg.reply_to_message.from.id, {can_send_messages: false});
+        bot.sendMessage(msg.chat.id, messages.restrictVoice1.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.d + '/\">' + 
+        tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
+      }
     }
   }
 });
 
 // Команда /mute2, лишающая пользователя возможности спамить стикерами, картинками и другим медиа-контентом
 bot.onText(/^\/mute2\b ?([^\s]+)? ?(.+)?/, async (msg, match) => {
-  if (msg.chat.type == 'supergroup' && msg.reply_to_message && await isAdmin(msg.chat.id, msg.from.id)) {
-    if (match[1] && match[2]) {
-      bot.restrictChatMember(msg.chat.id, msg.reply_to_message.from.id, {
-        until_date: tools.duration(match[1], 'date'), 
-        can_send_messages: true,
-        can_send_media_messages: false, 
-        can_send_other_messages: false,
-        can_add_web_page_previews: false
-      });
-      bot.sendMessage(msg.chat.id, 'За ' + match[2] + ' ' + messages.restrictMedia2.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
-      tools.nameToBeShow(msg.reply_to_message.from) + '</a>').replace('$duration', tools.duration(match[1])), {parse_mode : 'HTML'});
-    } else if (match[1]) {
-      bot.restrictChatMember(msg.chat.id, msg.reply_to_message.from.id, {
-        until_date: tools.duration(match[1], 'date'), 
-        can_send_messages: true,
-        can_send_media_messages: false, 
-        can_send_other_messages: false,
-        can_add_web_page_previews: false
-      });
-      bot.sendMessage(msg.chat.id, messages.restrictMedia2.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
-      tools.nameToBeShow(msg.reply_to_message.from) + '</a>').replace('$duration', tools.duration(match[1])), {parse_mode : 'HTML'});
-    } else {
-      bot.restrictChatMember(msg.chat.id, msg.reply_to_message.from.id, { 
-        can_send_messages: true,
-        can_send_media_messages: false, 
-        can_send_other_messages: false,
-        can_add_web_page_previews: false
-      });
-      bot.sendMessage(msg.chat.id, messages.restrictMedia1.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
-      tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
+  if (msg.chat.type == 'supergroup' && msg.reply_to_message) {
+    if (await isAdmin(msg.chat.id, msg.from.id) || await isMod(msg.from.id)) {      
+      if (match[1] && match[2]) {
+        bot.restrictChatMember(msg.chat.id, msg.reply_to_message.from.id, {
+          until_date: tools.duration(match[1], 'date'), 
+          can_send_messages: true,
+          can_send_media_messages: false, 
+          can_send_other_messages: false,
+          can_add_web_page_previews: false
+        });
+        bot.sendMessage(msg.chat.id, 'За ' + match[2] + ' ' + messages.restrictMedia2.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
+        tools.nameToBeShow(msg.reply_to_message.from) + '</a>').replace('$duration', tools.duration(match[1])), {parse_mode : 'HTML'});
+      } else if (match[1]) {
+        bot.restrictChatMember(msg.chat.id, msg.reply_to_message.from.id, {
+          until_date: tools.duration(match[1], 'date'), 
+          can_send_messages: true,
+          can_send_media_messages: false, 
+          can_send_other_messages: false,
+          can_add_web_page_previews: false
+        });
+        bot.sendMessage(msg.chat.id, messages.restrictMedia2.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
+        tools.nameToBeShow(msg.reply_to_message.from) + '</a>').replace('$duration', tools.duration(match[1])), {parse_mode : 'HTML'});
+      } else {
+        bot.restrictChatMember(msg.chat.id, msg.reply_to_message.from.id, { 
+          can_send_messages: true,
+          can_send_media_messages: false, 
+          can_send_other_messages: false,
+          can_add_web_page_previews: false
+        });
+        bot.sendMessage(msg.chat.id, messages.restrictMedia1.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
+        tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
+      }
     }
   }
 });
 
 // Команда /unmute, снимающая все ограничения
 bot.onText(/^\/unmute$/, async (msg, match) => {
-  if (msg.chat.type == 'supergroup' && msg.reply_to_message && await isAdmin(msg.chat.id, msg.from.id)) {
-     bot.restrictChatMember(msg.chat.id, msg.reply_to_message.from.id, { 
-      can_send_messages: true,
-      can_send_media_messages: true, 
-      can_send_other_messages: true,
-      can_add_web_page_previews: true
-    });
-    bot.sendMessage(msg.chat.id, messages.unRestrict.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
-    tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
+  if (msg.chat.type == 'supergroup' && msg.reply_to_message) {
+    if (await isAdmin(msg.chat.id, msg.from.id) || await isMod(msg.from.id)) {      
+      bot.restrictChatMember(msg.chat.id, msg.reply_to_message.from.id, { 
+        can_send_messages: true,
+        can_send_media_messages: true, 
+        can_send_other_messages: true,
+        can_add_web_page_previews: true
+      });
+      bot.sendMessage(msg.chat.id, messages.unRestrict.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
+      tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
+    }
   }
 });
 
 // Команда /kick, изгоняющая злых духов
 bot.onText(/^\/kick\b ?(.+)?/, async (msg, match) => {
-  if (msg.chat.type == 'supergroup' && msg.reply_to_message && await isAdmin(msg.chat.id, msg.from.id)) {
-    var user = await bot.getChatMember(msg.chat.id, msg.reply_to_message.from.id);
-    if (user.status == 'member') {
-      if (match[1]) {
-        bot.kickChatMember(msg.chat.id, msg.reply_to_message.from.id);
-        bot.unbanChatMember(msg.chat.id, msg.reply_to_message.from.id);
-        bot.sendMessage(msg.chat.id, 'За ' + match[1]+ ' ' + messages.kick.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
-        tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
+  if (msg.chat.type == 'supergroup' && msg.reply_to_message) {
+    if (await isAdmin(msg.chat.id, msg.from.id) || await isMod(msg.from.id)) {      
+      var user = await bot.getChatMember(msg.chat.id, msg.reply_to_message.from.id);
+      if (user.status == 'member') {
+        if (match[1]) {
+          bot.kickChatMember(msg.chat.id, msg.reply_to_message.from.id);
+          bot.unbanChatMember(msg.chat.id, msg.reply_to_message.from.id);
+          bot.sendMessage(msg.chat.id, 'За ' + match[1]+ ' ' + messages.kick.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
+          tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
+        } else {
+          bot.kickChatMember(msg.chat.id, msg.reply_to_message.from.id);
+          bot.unbanChatMember(msg.chat.id, msg.reply_to_message.from.id);
+          bot.sendMessage(msg.chat.id, messages.kick.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
+          tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
+        }
       } else {
-        bot.kickChatMember(msg.chat.id, msg.reply_to_message.from.id);
-        bot.unbanChatMember(msg.chat.id, msg.reply_to_message.from.id);
-        bot.sendMessage(msg.chat.id, messages.kick.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
+        bot.sendMessage(msg.chat.id, messages.kickNotFound.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
         tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
       }
-    } else {
-      bot.sendMessage(msg.chat.id, messages.kickNotFound.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
-      tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
     }
   }
 });
 
 // Команда /ban, изгоняющая и запечатывающая злых духов
 bot.onText(/^\/ban\b ?(.+)?/, async (msg, match) => {
-  if (msg.chat.type == 'supergroup' && msg.reply_to_message && await isAdmin(msg.chat.id, msg.from.id)) {
-    if (match[1]) {
-      bot.kickChatMember(msg.chat.id, msg.reply_to_message.from.id);
-      bot.sendMessage(msg.chat.id, 'За ' + match[1]+ ' ' + messages.ban.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
-      tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
-    } else {
-      bot.kickChatMember(msg.chat.id, msg.reply_to_message.from.id);
-      bot.sendMessage(msg.chat.id, messages.ban.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
-      tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
+  if (msg.chat.type == 'supergroup' && msg.reply_to_message) {
+    if (await isAdmin(msg.chat.id, msg.from.id) || await isMod(msg.from.id)) {      
+      if (match[1]) {
+        bot.kickChatMember(msg.chat.id, msg.reply_to_message.from.id);
+        bot.sendMessage(msg.chat.id, 'За ' + match[1]+ ' ' + messages.ban.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
+        tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
+      } else {
+        bot.kickChatMember(msg.chat.id, msg.reply_to_message.from.id);
+        bot.sendMessage(msg.chat.id, messages.ban.replace('$username', '<a href=\"tg://user?id=' + msg.reply_to_message.from.id + '/\">' + 
+        tools.nameToBeShow(msg.reply_to_message.from) + '</a>'), {parse_mode : 'HTML'});
+      }
     }
   }
 });
@@ -448,12 +472,12 @@ bot.on('callback_query', async (msg) => {
         for (var i = 0; i < find.forwardId.length; i++) {
           bot.forwardMessage(msg.from.id, config.channel, find.forwardId[i])
             .then(data => bot.answerCallbackQuery(msg.id, messages.reSend))
-            .catch(error => console.log(error.message));
+            .catch(error => bot.answerCallbackQuery(msg.id, messages.reSendErr, true));
         }
       } else {
         bot.forwardMessage(msg.from.id, config.channel, find.forwardId)
         .then(data => bot.answerCallbackQuery(msg.id, messages.reSend))
-        .catch(error => console.log(error.message));
+        .catch(error => bot.answerCallbackQuery(msg.id, messages.reSendErr, true));
       }
     })
   }
@@ -463,7 +487,7 @@ bot.on('text', async (msg) => {
   if (msg.chat.type == 'private') console.log('[Log]', tools.nameToBeShow(msg.from) + ' (' + msg.from.id + ') wrote to bot: ' + msg.text);
 });
 
-// Функция проверяет, является ли пользователь админом
+// Проверяет, является ли пользователь админом
 const isAdmin = async (chatId, userId) => {
   const admins = await bot.getChatAdministrators(chatId);
   if (admins.filter(x => x.user.id == userId).length > 0) {
@@ -473,6 +497,7 @@ const isAdmin = async (chatId, userId) => {
     };
 };
 
+// Проверяет, является ли пользователь модером
 const isMod = async (userId) => {
   var user = await mongoUsers.findOne({userId: userId, mod: true});
     if (user) {
