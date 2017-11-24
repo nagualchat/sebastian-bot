@@ -6,7 +6,6 @@ const config = require('./config/config');
 const messages = require('./config/messages');
 const tools = require('./tools');
 
-var mongoUsers, mongoFavs, mongoDeleted, mongoLog;
 var lastGoodDay, lastGoodNight;
 var session = {}; 
 
@@ -22,12 +21,12 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
     console.log('[Log] ошибка подключения к mongo:', err.message);
     return database.close();
   }
-  mongoFavs = database.collection('favorite_messages');
-  mongoLog = database.collection('log_messages');
-  mongoUsers = database.collection('users');
-  mongoDeleted = database.collection('deleted_messages');
+  const mongoFavs = database.collection('favorite_messages');
+  const mongoLog = database.collection('log_messages');
+  const mongoUsers = database.collection('users');
+  const mongoDeleted = database.collection('deleted_messages');
 
-  const  bot = new TelegramBot(config.token, {polling: true});
+  const bot = new TelegramBot(config.token, {polling: true});
   bot.getMe().then((res) => { botMe = res });
   bot.getChat(config.group).then((res) => { group = res });
 
@@ -345,6 +344,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
               console.log('[Log] при открытой сессии создана ещё одна');
             }
             session[msg.from.id] = {timer : setInterval(checkRecTime, 1000, msg), toDel: [], userId: []};
+            console.log('[Log] Сессия ' + msg.from.id + ' (' + tools.nameToBeShow(msg.from) + ') создана');            
           } 
             // Форвард-объекты не содержат в себе message_id оригинального сообщения
             // Получаем их из записанных логов чата, для этого ищём по uid написавшего и дате
@@ -434,14 +434,13 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
       break;
       // Кнопки меню, выводящегося при получении форвард-сообщений
       case 'delete':
-        bot.editMessageText(messages.menuDelete, {chat_id: session[msg.from.id].botMsg.chat.id, message_id: session[msg.from.id].botMsg.message_id, reply_markup: {inline_keyboard: [[{text: 'Спам', callback_data: 'delete_spam'}, {text: 'Оскорбления', callback_data: 'delete_abuse'}, {text: '💩', callback_data: 'delete_shit'}, {text: 'Отменить', callback_data: 'cancel'}]]}});
+        bot.editMessageText(messages.menuDelete, {chat_id: session[msg.from.id].botMsg.chat.id, message_id: session[msg.from.id].botMsg.message_id, reply_markup: {inline_keyboard: [[{text: 'Спам', callback_data: 'delete_spam'}, {text: 'Срам', callback_data: 'delete_immoral'}, {text: 'Оскорбление', callback_data: 'delete_abuse'}, {text: 'Отменить', callback_data: 'cancel'}]]}});
         session[msg.from.id].mode = 'waiting_delete_reason';
         sessionTimeout(msg);
         break;
       case /delete_/.test(msg.data) && msg.data:
         var match = msg.data.match(/delete_(.*)/i);
-        var reason = (match[1] == 'spam') ? 'спам' : (match[1] == 'abuse') ? 'оскорбления' : (match[1] == 'shit') ? 'шитпостинг' : 'err';
-        del(msg, reason);
+        del(msg, tools.menuReason(match));
         break;
       case 'restrict':
         bot.editMessageText(messages.menuRestrict, {chat_id: session[msg.from.id].botMsg.chat.id, message_id: session[msg.from.id].botMsg.message_id, reply_markup: {inline_keyboard: [[{text: 'Войс', callback_data: 'mute_voice'}, {text: 'Медиа', callback_data: 'mute_media'}, {text: 'Кик', callback_data: 'kick'}, {text: 'Бан', callback_data: 'ban'}, {text: 'Отмена', callback_data: 'cancel'}]]}, parse_mode : 'markdown'});
@@ -464,24 +463,22 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
         mute(msg, 'media', duration[1]);
         break;
       case 'kick':
-        bot.editMessageText(messages.menuKick, {chat_id: session[msg.from.id].botMsg.chat.id, message_id: session[msg.from.id].botMsg.message_id, reply_markup: {inline_keyboard: [[{text: 'Спам', callback_data: 'kick_spam'}, {text: 'Оскорбления', callback_data: 'kick_abuse'}, {text: '💩', callback_data: 'delete_shit'}, {text: '🔙', callback_data: 'restrict'}]]}});
+        bot.editMessageText(messages.menuKick, {chat_id: session[msg.from.id].botMsg.chat.id, message_id: session[msg.from.id].botMsg.message_id, reply_markup: {inline_keyboard: [[{text: 'Спам', callback_data: 'kick_spam'}, {text: 'Срам', callback_data: 'kick_immoral'}, {text: 'Оскорбления', callback_data: 'kick_abuse'}, {text: '🔙', callback_data: 'restrict'}]]}});
         session[msg.from.id].mode = 'waiting_kick_reason';
         sessionTimeout(msg);
         break;
       case 'ban':
-        bot.editMessageText(messages.menuKick, {chat_id: session[msg.from.id].botMsg.chat.id, message_id: session[msg.from.id].botMsg.message_id, reply_markup: {inline_keyboard: [[{text: 'Спам', callback_data: 'ban_spam'}, {text: 'Оскорбления', callback_data: 'ban_abuse'}, {text: '💩', callback_data: 'delete_shit'}, {text: '🔙', callback_data: 'restrict'}]]}});
+        bot.editMessageText(messages.menuKick, {chat_id: session[msg.from.id].botMsg.chat.id, message_id: session[msg.from.id].botMsg.message_id, reply_markup: {inline_keyboard: [[{text: 'Спам', callback_data: 'ban_spam'}, {text: 'Срам', callback_data: 'ban_immoral'}, {text: 'Оскорбления', callback_data: 'ban_abuse'}, {text: '🔙', callback_data: 'restrict'}]]}});
         session[msg.from.id].mode = 'waiting_ban_reason';
         sessionTimeout(msg);
         break;
       case /kick_/.test(msg.data) && msg.data:
         var match = msg.data.match(/kick_(.*)/i);
-        var reason = (match[1] == 'spam') ? 'спам' : (match[1] == 'abuse') ? 'оскорбления' : (match[1] == 'shit') ? 'шитпостинг' : 'err';
-        kick(msg, 'kick', reason);
+        kick(msg, 'kick', tools.menuReason(match));
         break;
       case /ban_/.test(msg.data) && msg.data:
         var match = msg.data.match(/ban_(.*)/i);
-        var reason = (match[1] == 'spam') ? 'спам' : (match[1] == 'abuse') ? 'оскорбления' : (match[1] == 'shit') ? 'шитпостинг' : 'err';
-        kick(msg, 'ban', reason);
+        kick(msg, 'ban', tools.menuReason(match));
         break;
       case 'cancel':
         bot.editMessageText(messages.menuCancel, {chat_id: session[msg.from.id].botMsg.chat.id, message_id: session[msg.from.id].botMsg.message_id});
@@ -502,7 +499,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
       session[msg.from.id].mode == '';
       kick(msg, 'ban', msg.text);
     }
-  });
+  });12313
 
   // Конечная функция кика/бана
   async function kick(msg, mode, reason) {
@@ -588,7 +585,6 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
         var name = '<a href=\"tg://user?id=' + session[msg.from.id].toDel[i].from.id + '/\">' + tools.nameToBeShow(session[msg.from.id].toDel[i].from) + '</a>';
         usrList[name] = (usrList[name] || 0) + 1;
     }
-    
     // Если ошибка при отправке в канал не возникала, сообщения удаляются из чата
       if (!error) {
         for (var i = 0; i < session[msg.from.id].toDel.length; i++) {
@@ -608,8 +604,6 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
           }
         }
       }
-    
-  
     // По содержимому usrList[] составляется отчёт о том, сколько чьих сообщений было удалено
     for (var usr in usrList) {
       ii++;
@@ -624,12 +618,11 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
         message = messages.deleteDels2.replace('$names', names);
       }
     } 
-
     // Если ошибка при отправке в канал не возникала, то высылаются информационные сообщения о произведённом удалении
     if (!error) {
       report = await bot.sendMessage(config.group, message + ' за ' + reason + '.', {parse_mode : 'HTML', reply_markup: {inline_keyboard: [[{text: messages.reportBtn, callback_data: 'send_del_msg'}]]}});
       mongoDeleted.insertOne({reportId: report.message_id, forwardId: forwList});      
-      bot.sendMessage(config.channel, '[<a href="http://t.me/' + group.username + '/' + report.message_id + '">' + '←' + '</a>] ' + message + ' модератором <a href=\"tg://user?id=' + msg.from.id + '/\">' + tools.nameToBeShow(msg.from) + '</a>. Причина: ' + reason + '.', {parse_mode : 'HTML', disable_web_page_preview: 'true'});
+      bot.sendMessage(config.channel, '<a href="http://t.me/' + group.username + '/' + report.message_id + '">' + '[←]' + '</a> ' + message + ' модератором <a href=\"tg://user?id=' + msg.from.id + '/\">' + tools.nameToBeShow(msg.from) + '</a>. Причина: ' + reason + '.', {parse_mode : 'HTML', disable_web_page_preview: 'true'});
       bot.editMessageText(message + ' за ' + reason + '.', {chat_id: session[msg.from.id].botMsg.chat.id, message_id: session[msg.from.id].botMsg.message_id, parse_mode : 'HTML'});
     } else {
       bot.editMessageText('Операция отменена из-за ошибки (' + error + '). Попробуйте заново.', {chat_id: session[msg.from.id].botMsg.chat.id, message_id: session[msg.from.id].botMsg.message_id});
@@ -643,7 +636,7 @@ function sessionTimeout(msg, mode) {
   session[msg.from.id].timeout = setTimeout(function kickSession(msg) { 
     bot.editMessageText(messages.sessionOutd, {chat_id: session[msg.from.id].botMsg.chat.id, message_id: session[msg.from.id].botMsg.message_id});  
     delete session[msg.from.id];
-    console.log('[Log] Сессия ' + msg.from.id + ' завершена таймером');
+    console.log('[Log] Сессия ' + msg.from.id + ' сброшена таймером');
   }, config.sessionLifeTime, msg);
 }
 

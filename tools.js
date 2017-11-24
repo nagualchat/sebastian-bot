@@ -27,13 +27,19 @@ function capitalize(string) {
   return string.charAt(0).toUpperCase() + string.slice(1);
 }
 
+// Общая функция склонение слов для согласования с числами
+function declension(number, titles) {  
+  cases = [2, 0, 1, 1, 1, 2];  
+  return number + ' ' + titles[ (number%100>4 && number%100<20)? 2 : cases[(number%10<5)?number%10:5] ];  
+}
+
 // Склонение слова "сообщение"
 function msgDecl(match) {
   var msgname = ['сообщение', 'сообщения', 'сообщений'];
   return declension(match, msgname);
 }
 
-// Функция отображения срока наказания для команд /mute, mute2 и /ban
+// Функция отображения срока наказания для мьюта, бана и кика
 function dconvert(match, mode) {
   var regexp = match.match(/(\d*)(\S)/i);
   // Склонения можно определить, примеряя к цифрам 1, 3 и 5
@@ -54,10 +60,9 @@ function dconvert(match, mode) {
   } else return 'err';
 }; 
 
-// Общая функция склонение слов для согласования с числами
-function declension(number, titles) {  
-  cases = [2, 0, 1, 1, 1, 2];  
-  return number + ' ' + titles[ (number%100>4 && number%100<20)? 2 : cases[(number%10<5)?number%10:5] ];  
+// Полученик причины удаления, бана и кика в зависимости от нажатой кнопки в меню
+function menuReason(match) {
+  return (match[1] == 'spam') ? 'спам' : (match[1] == 'immoral') ? 'безнравственное содержание' : (match[1] == 'abuse') ? 'оскорбительное содержание' : 'err';
 }
 
 exports.nameToBeShow = nameToBeShow;
@@ -67,3 +72,4 @@ exports.capitalize = capitalize;
 exports.declension = declension;
 exports.msgDecl = msgDecl;
 exports.dconvert = dconvert;
+exports.menuReason = menuReason;
