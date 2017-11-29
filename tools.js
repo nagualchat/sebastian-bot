@@ -46,7 +46,7 @@ function decl(number, titles) {
 // Склонение слов
 function declension(match, mode) {
   var words = {message: ['сообщение', 'сообщения', 'сообщений'], plus: ['плюс', 'плюса', 'плюсов']};
-  return decl(match, words.plus);
+  return decl(match, words[mode]);
 }
 
 // Функция отображения срока наказания для мьюта, бана и кика

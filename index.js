@@ -189,10 +189,10 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
           success = false;
         }
         if(success != false) {
-          s.push('<a href=\"tg://user?id=' + user.userId + '/\">' + tools.nameToBeShow(inf.user) + '</a>: ' + user.repPoints);
+          s.push(tools.nameToBeShow(inf.user) + ': ' + user.repPoints);
         }
       };
-       bot.sendMessage(msg.chat.id, messages.repTop + s.join('\n'), {parse_mode : 'HTML', disable_web_page_preview: 'true'});
+       bot.sendMessage(msg.chat.id, messages.repTop + s.join('\n'), {parse_mode: 'HTML', disable_web_page_preview: 'true'});
     })
   });
 
@@ -219,6 +219,8 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
         mongoUsers.findOne({userId: msg.reply_to_message.from.id}, function (err, user) {
           if (!user) {
             mongoUsers.insertOne({userId: msg.reply_to_message.from.id, repPoints: gift});
+          } else if (!user.repPoints) {
+            mongoUsers.update({userId: msg.reply_to_message.from.id}, {$set: {repPoints: gift}})
           } else {
             mongoUsers.update({userId: msg.reply_to_message.from.id}, {$set: {repPoints: user.repPoints+gift}});
           }
@@ -358,7 +360,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
         var s = [];
         for (let mod of mods) {
           var inf = await bot.getChatMember(config.group, mod.userId);
-          s.push('<a href=\"tg://user?id=' + mod.userId + '/\">' + tools.nameToBeShow(inf.user) + '</a>');
+          s.push(tools.nameToBeShow(inf.user));
         }
         bot.sendMessage(msg.chat.id, messages.modList + s.join('\n'), {parse_mode : 'HTML', disable_web_page_preview: 'true'});
       })
@@ -735,17 +737,17 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
         names += usrList[usr] + ' ' + usr;
       }
       if (ii == 1) {
-        message =  messages.deleteDels1.replace('$count', tools.declension(usrList[usr]), 'message').replace('$name', usr);
+        message =  messages.deleteDel1.replace('$count', tools.declension(usrList[usr], 'message')).replace('$name', usr).replace('$reason', reason);
       } else if (ii >= 2) {
-        message = messages.deleteDels2.replace('$names', names);
+        message = messages.deleteDel2.replace('$names', names).replace('$reason', reason);
       }
     } 
     // Если ошибка при отправке в канал не возникала, то высылаются информационные сообщения о произведённом удалении
     if (!error) {
-      report = await bot.sendMessage(config.group, message + ' за ' + reason + '.', {parse_mode : 'HTML', reply_markup: {inline_keyboard: [[{text: messages. btnShowDeleted, callback_data: 'send_del_msg'}]]}});
+      report = await bot.sendMessage(config.group, message, {parse_mode : 'HTML', reply_markup: {inline_keyboard: [[{text: messages. btnShowDeleted, callback_data: 'send_del_msg'}]]}});
       mongoDeleted.insertOne({reportId: report.message_id, forwardId: forwList});      
-      bot.sendMessage(config.channel, '<a href="http://t.me/' + group.username + '/' + report.message_id + '">' + '[←]' + '</a> ' + message + ' модератором <a href=\"tg://user?id=' + msg.from.id + '/\">' + tools.nameToBeShow(msg.from) + '</a>. Причина: ' + reason + '.', {parse_mode : 'HTML', disable_web_page_preview: 'true'});
-      bot.editMessageText(message + ' за ' + reason + '.', {chat_id: session[msg.from.id].botMsg.chat.id, message_id: session[msg.from.id].botMsg.message_id, parse_mode : 'HTML'});
+      bot.sendMessage(config.channel, '<a href="http://t.me/' + group.username + '/' + report.message_id + '">' + '[←]' + '</a> ' + message + ' Модератор: <a href=\"tg://user?id=' + msg.from.id + '/\">' + tools.nameToBeShow(msg.from) + '</a>.', {parse_mode : 'HTML', disable_web_page_preview: 'true'});
+      bot.editMessageText(message, {chat_id: session[msg.from.id].botMsg.chat.id, message_id: session[msg.from.id].botMsg.message_id, parse_mode : 'HTML'});
     } else {
       bot.editMessageText('Операция отменена из-за ошибки (' + error + '). Попробуйте заново.', {chat_id: session[msg.from.id].botMsg.chat.id, message_id: session[msg.from.id].botMsg.message_id});
     }
@@ -771,7 +773,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
   // Функция проверяет, является ли пользователь админом или модератором
   const memberStatus = async (chatId, userId) => {
     var mods = await mongoUsers.findOne({userId: userId, mod: true});
-    var admins = await bot.getChatAdministrators(chatId);    
+    var admins = await bot.getChatAdministrators(chatId);
       if (mods) {
         return 'moderator';
       } else if (admins.filter(x => x.user.id == userId).length > 0) {
