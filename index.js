@@ -1,5 +1,5 @@
 const TelegramBot = require('node-telegram-bot-api'); 
-const MongoClient = require("mongodb").MongoClient;
+const MongoClient = require('mongodb').MongoClient;
 const moment = require('moment');
 const fs = require('fs');
 
@@ -26,7 +26,8 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
   const mongoLog = database.collection('log_messages');
   const mongoUsers = database.collection('users');
   const mongoDeleted = database.collection('deleted_messages');
-
+  const mongoBooks = database.collection('books');
+  
   const bot = new TelegramBot(config.token, {polling: true});
   bot.getMe().then((res) => { botMe = res });
   bot.getChat(config.group).then((res) => { group = res });
@@ -36,6 +37,36 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
       console.log('[Log] EPARSE: Error parsing Telegram response (502 Bad Gateway)');
     } else {
       console.log('[Log]', err.message);
+    }
+  });
+
+  // Инлайн-поиск по книгам Кастанеды
+  bot.on('inline_query', msg => {
+    if (msg.query) {
+      var offset = parseInt(msg.offset) || 0;
+      // explain() возвращает из нутра монги ключевые слова, по которым производится поиск в индексе
+      mongoBooks.find({$text: {$search: msg.query}}).explain(function(err, explain){
+        mongoBooks.find({$text: {$search: msg.query}}, {score: {$meta: 'textScore'}}).sort({score:{$meta:'textScore'}}).limit(100).toArray((err, res) => {
+          var results = res.map(a => {
+              return {
+                id: a._id,
+                type: 'article',
+                title: a.book,
+                input_message_content: {
+                  parse_mode: 'markdown',
+                  message_text: `${a.text}\n[${a.book}](${config.booksUrl}/${a.book.replace('—', '-')}.html#L${a.number})`,
+                  disable_web_page_preview: true
+                // В description помещается около 130 символов
+                }, description: tools.truncate(a.text, explain.executionStats.executionStages.parsedTextQuery.terms[0], 120)
+              }
+            })
+            bot.answerInlineQuery(msg.id, results.slice(offset, offset + 5), {next_offset: offset + 5, cache_time: 0, switch_pm_text: tools.showSearchPhrases(results, explain.executionStats.executionStages.parsedTextQuery), switch_pm_parameter: 'search'});
+        })
+      console.log('[Log]', tools.nameToBeShow(msg.from) + ' ищет', msg.query);
+      //console.log(explain.executionStats.executionStages.parsedTextQuery);      
+      });
+    } else {
+      bot.answerInlineQuery(msg.id, [], {cache_time: 0, switch_pm_text: 'Справка', switch_pm_parameter: 'help'});
     }
   });
 
@@ -163,14 +194,17 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
     if (msg.reply_to_message && msg.reply_to_message.from.id != msg.from.id && msg.reply_to_message.from.id != botMe.id) {
       mongoUsers.findOne({userId: msg.from.id}, function (err, user) {
         if (!user) {
+          console.log('[Log] ' + msg.reply_to_message.from.id + ' начислен плюс (пользователя не существовало)');          
           reputationInc(msg);
           mongoUsers.insertOne({userId: msg.from.id, repIncDate: msg.date});
         } else if (!user.repIncDate) {
+          console.log('[Log] ' + msg.reply_to_message.from.id + ' начислен плюс (первый)'); 
           reputationInc(msg);
           mongoUsers.update({userId: msg.from.id}, {$set: {repIncDate: msg.date}});
           // Плюсы не начисляются, если после последнего отправленного не прошло время таймаута
         } else if (moment().diff(moment.unix(user.repIncDate), 'seconds') >= config.reputationTimeout) {
           reputationInc(msg);
+          console.log('[Log] ' + msg.reply_to_message.from.id + ' начислен плюс'); 
           mongoUsers.update({userId: msg.from.id}, {$set: {repIncDate: msg.date}});
         }
       })

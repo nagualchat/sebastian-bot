@@ -76,6 +76,44 @@ function menuReason(match) {
   }
 }
 
+// Подрезание параграфа для отображения в списке результатов поиска
+function truncate(sentence, search, length) {
+  var index = sentence.toLowerCase().indexOf(search);
+  // Если перед искомым словом не найдено точки, то начальной позицией считается начало строки
+  var leftIndex = sentence.lastIndexOf('. ', index) == -1 ? 0 : sentence.lastIndexOf('. ', index) + 2;
+  var str = sentence.substring(leftIndex, index + search.length + length);
+  // Короткая строка выводится целиком
+  if(str.length <= length) return(str);
+  // Если срез пришёлся на середину слова, то строка укорачивается до первого найденного пробела
+  str = str.substr(0, Math.min(str.length, str.lastIndexOf(' ')))
+  return str;
+}
+
+// Вывод количества найденного и поискового запроса
+function showSearchPhrases(result, query) {
+  var amount = result.length >= 100 ? 'Найдено >100' : 'Найдено: ' + result.length;
+  // Если есть terms, но нету phrases
+  if (query.terms.join().length && !query.phrases.join().length) {
+    queries = query.terms.join(', ');
+  // Если есть phrases, но нету terms
+  } else if (query.phrases.join().length && !query.terms.join().length) {
+    queries = '"' + query.phrases.join(', ') + '"';
+  } else {
+    // А если есть phrases и terms, нужно вычистить дубликаты
+    var terms = query.terms.filter(function(term) {
+    var phrase;
+      for (var i in query.phrases) {
+        if (query.phrases[i].toString().match(new RegExp('^' + term, 'g')))
+          phrase = term;
+      }
+    // Фильтр отбрасывает те terms, которые похожи на phrases
+    return term != phrase;
+  });
+    queries = terms.join().length < 1 ? '"' + query.phrases.join(', ') + '"' : '"' + query.phrases.join(', ') + '", ' + terms.join(', ');
+  }
+  return amount + ' (' + queries + ')';
+};
+
 exports.nameToBeShow = nameToBeShow;
 exports.getRandom = getRandom;
 exports.getRandomLine = getRandomLine;
@@ -85,3 +123,5 @@ exports.decl = decl;
 exports.declension = declension;
 exports.dconvert = dconvert;
 exports.menuReason = menuReason;
+exports.truncate = truncate;
+exports.showSearchPhrases = showSearchPhrases;
