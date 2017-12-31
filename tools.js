@@ -23,7 +23,6 @@ function getRandomLine(filename){
   var lines = fs.readFileSync(filename, 'utf8').toString().split("\n");
   var randomLine = Math.floor(Math.random() * lines.length);
   return lines[1];
-
 }
 
 // Cортировка значений массива
@@ -91,7 +90,7 @@ function truncate(sentence, search, length) {
 
 // Вывод количества найденного и поискового запроса
 function showSearchPhrases(result, query) {
-  var amount = result.length >= 100 ? 'Найдено >100' : 'Найдено: ' + result.length;
+  var amount = result.length >= 50 ? 'Найдено >50' : 'Найдено: ' + result.length;
   // Если есть terms, но нету phrases
   if (query.terms.join().length && !query.phrases.join().length) {
     queries = query.terms.join(', ');
