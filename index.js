@@ -1,5 +1,6 @@
 const TelegramBot = require('node-telegram-bot-api');
 const MongoClient = require('mongodb').MongoClient;
+const osTmpdir = require('os-tmpdir');
 const moment = require('moment');
 const fs = require('fs');
 
@@ -49,7 +50,6 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
     console.log(msg);
   });
   */
-
 
   // Инлайн-поиск по книгам Кастанеды
   bot.on('inline_query', msg => {
@@ -165,6 +165,25 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
     });
   });
 
+  // Преобразование голосовых сообщений в текст
+  bot.on('voice', async function (msg) {
+    if (msg.chat.type == 'supergroup') {
+      var message = await bot.sendMessage(msg.chat.id, 'Голосовое сообщение отправляется на сервер для распознания...', {reply_to_message_id: msg.message_id});
+      filePath = await bot.downloadFile(msg.voice.file_id, osTmpdir());
+      await tools.voiceConvert(filePath);
+      bot.editMessageText('Голосовое сообщение отправляется на сервер для распознания... Ожидание ответа...', {chat_id: msg.chat.id, message_id: message.message_id});
+      fs.unlinkSync(filePath);
+      response = await tools.speechToText(filePath + '.mp3', config.witToken);
+      fs.unlinkSync(filePath + '.mp3');
+      if(response._text === null || response._text === undefined || response._text === ''){
+        bot.editMessageText('Не удалось распознать.', {chat_id: msg.chat.id, message_id: message.message_id});
+        return;
+      }
+      //console.log('[Voice] ▶️', tools.correction(response._text));
+      bot.editMessageText('▶️ ' + tools.correction(response._text), {chat_id: msg.chat.id, message_id: message.message_id});
+    }
+  });
+
   // Ответ бота на пожелания доброго утра и спокойной ночи
   bot.onText(/добр\S* утр\S*|утр\S* добро\S*|^(утра|утречка)(\.|\!)?$/i, (msg) => {
     if (!lastGoodDay) {
@@ -204,22 +223,22 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
     if (msg.reply_to_message && msg.reply_to_message.from.id != msg.from.id && msg.reply_to_message.from.id != botMe.id) {
       mongoUsers.findOne({userId: msg.from.id}, function (err, user) {
         if (!user) {
-          console.log('[Log] ' + msg.reply_to_message.from.id + ' начислен плюс (пользователя не существовало)');
+          console.log('[Log] ' + tools.nameToBeShow(msg.reply_to_message.from) + ' (' + msg.reply_to_message.from.id + ') начислен плюс (пользователя не существовало)');
           reputationInc(msg);
           mongoUsers.insertOne({userId: msg.from.id, name: tools.nameToBeShow(msg.from), repIncDate: msg.date});
         } else if (!user.repIncDate) {
-          console.log('[Log] ' + msg.reply_to_message.from.id + ' начислен плюс (первый)');
+          console.log('[Log] ' + tools.nameToBeShow(msg.reply_to_message.from) + ' (' + msg.reply_to_message.from.id + ') начислен плюс (первый)');
           reputationInc(msg);
           mongoUsers.update({userId: msg.from.id}, {$set: {name: tools.nameToBeShow(msg.from), repIncDate: msg.date}});
           // Плюсы не начисляются, если после последнего отправленного не прошло время таймаута
         } else if (moment().diff(moment.unix(user.repIncDate), 'seconds') >= config.reputationTimeout) {
           reputationInc(msg);
-          console.log('[Log] ' + msg.reply_to_message.from.id + ' начислен плюс');
+          console.log('[Log] ' + tools.nameToBeShow(msg.reply_to_message.from) + ' (' + msg.reply_to_message.from.id + ') начислен плюс');
           mongoUsers.update({userId: msg.from.id}, {$set: {name: tools.nameToBeShow(msg.from), repIncDate: msg.date}});
         } else
-          console.log('[Log] ' + msg.from.id + ' не удалось отправить плюс');
-      })
-    }
+          console.log('[Log] ' + tools.nameToBeShow(msg.from) + ' (' + msg.from.id + ') не удалось отправить плюс');
+        }
+      )}
   });
 
   // Команда /top

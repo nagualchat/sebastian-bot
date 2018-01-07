@@ -1,6 +1,11 @@
-const TelegramBot = require('node-telegram-bot-api'); 
+const TelegramBot = require('node-telegram-bot-api');
 const moment = require('moment');
+const http = require('https');
+const ogg = require('ogg');
+const lame = require('lame');
+const opus = require('node-opus');
 const fs = require('fs');
+
 const messages = require('./config/messages');
 
 // Функция для вывода второй части имени, если она есть
@@ -36,10 +41,16 @@ function capitalize(string) {
   return string.charAt(0).toUpperCase() + string.slice(1);
 }
 
+// Делает первую букву заглавной и расставляет точки
+function correction(string) {
+  var capitalized =  string.charAt(0).toUpperCase() + string.slice(1);
+  return capitalized.replace(/([а-я]) ([А-Я])/g, '$1. $2') + '.';
+}
+
 // Общая функция склонение слов для согласования с числами
-function decl(number, titles) {  
-  cases = [2, 0, 1, 1, 1, 2];  
-  return number + ' ' + titles[ (number%100>4 && number%100<20)? 2 : cases[(number%10<5)?number%10:5] ];  
+function decl(number, titles) {
+  cases = [2, 0, 1, 1, 1, 2];
+  return number + ' ' + titles[ (number%100>4 && number%100<20)? 2 : cases[(number%10<5)?number%10:5] ];
 }
 
 // Склонение слов
@@ -53,12 +64,12 @@ function dconvert(match, mode) {
   var regexp = match.match(/(\d*)(\S)/i);
   // Склонения можно определить, примеряя к цифрам 1, 3 и 5
   var words = {day: ['день', 'дня', 'дней'], hour: ['час', 'часа', 'часов']};
-  if (regexp[2] == 'd') { 
+  if (regexp[2] == 'd') {
     if (mode == 'date') {
       return date = moment().add(regexp[1], 'days').unix();
     } else {
       return decl(regexp[1], words[day]);
-    }        
+    }
   } else if (regexp[2] == 'h') {
       if (mode == 'date') {
         return date = moment().add(regexp[1], 'hours').unix();
@@ -66,7 +77,7 @@ function dconvert(match, mode) {
       return decl(regexp[1], words[hour]);
     }
   } else return 'err';
-}; 
+};
 
 // Переводит код причины удаления, бана и кика в человекочитаемый вид
 function menuReason(match) {
@@ -113,6 +124,65 @@ function showSearchPhrases(result, query) {
   return amount + ' (' + queries + ')';
 };
 
+// Отправляет файл на сервер wit.ai для распознавания речи
+function speechToText(file, token) {
+  return new Promise((resolve) => {
+    const options = {
+      'method': 'POST',
+      'hostname': 'api.wit.ai',
+      'port': null,
+      'path': '/speech?v=20170307',
+      'headers': {
+        'authorization': 'Bearer ' + token,
+        'content-type': 'audio/mpeg3',
+        'cache-control': 'no-cache'
+      }
+    };
+    const req = http.request(options, function (res) {
+      const chunks = [];
+      res.on('data', function (chunk) {
+        chunks.push(chunk);
+      })
+      res.on('end', function () {
+        const body = Buffer.concat(chunks);
+        resolve(JSON.parse(body.toString()));
+      })
+    })
+    fs.createReadStream(file).pipe(req);
+  })
+};
+
+// Конвертирует opus/ogg в mp3
+function voiceConvert(file) {
+  return new Promise((resolve) => {
+    var oggDecoder = new ogg.Decoder();
+    oggDecoder.on('stream', function (stream) {
+      var opusDecoder = new opus.Decoder();
+      opusDecoder.on('format', function (format) {
+        var mp3Encoder = new lame.Encoder({
+          // Входные параметры
+          channels: format.channels,
+          bitDepth: format.bitDepth,
+          sampleRate: format.sampleRate,
+        });
+        var out = fs.createWriteStream(file + '.mp3');
+        opusDecoder.pipe(mp3Encoder).pipe(out)
+        .on('close', function () {
+          resolve();
+        });
+      });
+      stream.pipe(opusDecoder);
+      stream.on('error', err => {
+        console.error('[Voice] Ошибка конвертации (ogg):', err.message);
+      });
+      opusDecoder.on('error', function (err) {
+        console.log('[Voice] Ошибка конвертации (opus):', err.message);
+      });
+    });
+    fs.createReadStream(file).pipe(oggDecoder);
+  })
+};
+
 exports.nameToBeShow = nameToBeShow;
 exports.getRandom = getRandom;
 exports.getRandomLine = getRandomLine;
@@ -124,3 +194,6 @@ exports.dconvert = dconvert;
 exports.menuReason = menuReason;
 exports.truncate = truncate;
 exports.showSearchPhrases = showSearchPhrases;
+exports.correction = correction;
+exports.speechToText = speechToText;
+exports.voiceConvert = voiceConvert;
