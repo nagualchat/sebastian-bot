@@ -91,14 +91,14 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
     };
     mongoUsers.findOne({userId: msg.new_chat_member.id}, function (err, user) {
       if (!user) {
-        bot.sendMessage(msg.chat.id,  tools.getRandom(messages.welcomeNew).replace('$name', tools.nameToBeShow(msg.new_chat_member)), {parse_mode : 'markdown'});
+        bot.sendMessage(msg.chat.id, tools.advancedRandom(messages.welcomeNew).replace('$name', tools.nameToBeShow(msg.new_chat_member)), {parse_mode : 'markdown'});
         mongoUsers.insertOne({userId: msg.new_chat_member.id, name: tools.nameToBeShow(msg.new_chat_member), joinDate: msg.date, antiSpam: 1});
       } else {
         if (moment().diff(moment.unix(user.joinDate), 'hours') <= config.joinPeriod) {
-          bot.sendMessage(msg.chat.id,  tools.getRandom(messages.welcomeRet1).replace('$name', tools.nameToBeShow(msg.new_chat_member)));
+          bot.sendMessage(msg.chat.id, tools.advancedRandom(messages.welcomeRet1).replace('$name', tools.nameToBeShow(msg.new_chat_member)));
           mongoUsers.update({userId: msg.new_chat_member.id}, {$set: {name: tools.nameToBeShow(msg.new_chat_member), joinDate: msg.date}})
         } else {
-          bot.sendMessage(msg.chat.id,  tools.getRandom(messages.welcomeRet2).replace('$name', tools.nameToBeShow(msg.new_chat_member)));
+          bot.sendMessage(msg.chat.id, tools.advancedRandom(messages.welcomeRet2).replace('$name', tools.nameToBeShow(msg.new_chat_member)));
           mongoUsers.update({userId: msg.new_chat_member.id}, {$set: {name: tools.nameToBeShow(msg.new_chat_member), joinDate: msg.date}})
         }
       }
@@ -220,30 +220,27 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
 
   // Начисление очков благодарности
   bot.onText(/плюсую|👍|\+|спасибо|благодарю|спс|thx/i, (msg) => {
-    if (msg.reply_to_message && msg.reply_to_message.from.id != msg.from.id && msg.reply_to_message.from.id != botMe.id) {
-      mongoUsers.findOne({userId: msg.from.id}, function (err, user) {
-        if (!user) {
-          console.log('[Log] ' + tools.nameToBeShow(msg.reply_to_message.from) + ' (' + msg.reply_to_message.from.id + ') начислен плюс (пользователя не существовало)');
-          reputationInc(msg);
-          mongoUsers.insertOne({userId: msg.from.id, name: tools.nameToBeShow(msg.from), repIncDate: msg.date});
-        } else if (!user.repIncDate) {
-          console.log('[Log] ' + tools.nameToBeShow(msg.reply_to_message.from) + ' (' + msg.reply_to_message.from.id + ') начислен плюс (первый)');
-          reputationInc(msg);
-          mongoUsers.update({userId: msg.from.id}, {$set: {name: tools.nameToBeShow(msg.from), repIncDate: msg.date}});
-          // Плюсы не начисляются, если после последнего отправленного не прошло время таймаута
-        } else if (moment().diff(moment.unix(user.repIncDate), 'seconds') >= config.reputationTimeout) {
-          reputationInc(msg);
-          console.log('[Log] ' + tools.nameToBeShow(msg.reply_to_message.from) + ' (' + msg.reply_to_message.from.id + ') начислен плюс');
-          mongoUsers.update({userId: msg.from.id}, {$set: {name: tools.nameToBeShow(msg.from), repIncDate: msg.date}});
-        } else
-          console.log('[Log] ' + tools.nameToBeShow(msg.from) + ' (' + msg.from.id + ') не удалось отправить плюс');
-        }
-      )}
+    if (msg.reply_to_message) {
+      if (msg.reply_to_message.from.id != msg.from.id && msg.reply_to_message.from.id != botMe.id) {
+        reputationInc(msg.reply_to_message.from.id);
+        console.log('[Log] ' + tools.nameToBeShow(msg.reply_to_message.from) + ' (' + msg.reply_to_message.from.id + ') начислен плюс');
+      }
+    } else {
+      // Находит предыдущее сообщение (задержка нужна потому что иногда читает раньше, чем успевает записаться mongoLog)
+      setTimeout(function() {
+        mongoLog.find({}).sort({_id:-1}).skip(1).limit(1).forEach(function(prev) {
+          if (prev.from.id != msg.from.id && prev.from.id != botMe.id) {
+            reputationInc(prev.from.id);
+            console.log('[Log] ' + prev.from.first_name + ' (' + prev.from.id + ') начислен плюс ( "' + msg.text + '" )');
+          }
+        });
+      }, 1000);
+    }
   });
 
   // Команда /top
   bot.onText(/^\/top\b/, (msg) => {
-    mongoUsers.find({repPoints: {$gte: 1}}).limit(20).sort({repPoints: -1}).toArray(async function(err, users) {
+    mongoUsers.find({plusCoins: {$gte: 1}}).limit(20).sort({plusCoins: -1}).toArray(async function(err, users) {
       var s = [];
       for (let user of users) {
         var success = true;
@@ -253,7 +250,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
           success = false;
         }
         if(success != false) {
-          s.push(tools.nameToBeShow(inf.user) + ': ' + user.repPoints);
+          s.push(tools.nameToBeShow(inf.user) + ': ' + user.plusCoins);
         }
       };
        bot.sendMessage(msg.chat.id, messages.repTop + s.join('\n'), {parse_mode: 'HTML', disable_web_page_preview: 'true'});
@@ -264,8 +261,8 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
   bot.onText(/^\/buy\b/, (msg) => {
     if (msg.chat.type == 'supergroup') {
       mongoUsers.findOne({userId: msg.from.id}, function (err, user) {
-        if (!user || user.repPoints == undefined) user.repPoints = 0;
-        bot.sendMessage(msg.chat.id, messages.repStore.replace('$name', tools.nameToBeShow(msg.from)).replace('$points', tools.declension(user.repPoints, 'plus')), {parse_mode : 'markdown', reply_markup: {inline_keyboard: [[{text: 'Цитата', callback_data: 'buy_quote_' + msg.from.id}, {text: 'Шутка', callback_data: 'buy_joke_' + msg.from.id}]]}});
+        if (!user || user.plusCoins == undefined) user.plusCoins = 0;
+        bot.sendMessage(msg.chat.id, messages.repStore.replace('$name', tools.nameToBeShow(msg.from)).replace('$points', tools.declension(user.plusCoins, 'plus')), {parse_mode : 'markdown', reply_markup: {inline_keyboard: [[{text: 'Цитата', callback_data: 'buy_quote_' + msg.from.id}, {text: 'Шутка', callback_data: 'buy_joke_' + msg.from.id}]]}});
       })
     } else bot.sendMessage(msg.chat.id, 'Эта команду следует вызывать в общем чате.');
   });
@@ -276,21 +273,21 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
       var gift = Number(match[1]);
       // Если достаточное количество плюсов есть на счету отправителя, они снимаются
       mongoUsers.findOne({userId: msg.from.id}, function (err, user) {
-        if (user && user.repPoints && user.repPoints >= gift) {
+        if (user && user.plusCoins && user.plusCoins >= gift) {
         bot.sendMessage(msg.chat.id, messages.giftMessage.replace('$name', tools.nameToBeShow(msg.from)).replace('$points', tools.declension(gift, 'plus')).replace('$name2', tools.nameToBeShow(msg.reply_to_message.from)));
-        mongoUsers.update({userId: msg.from.id}, {$set: {repPoints: user.repPoints-gift}});
+        mongoUsers.update({userId: msg.from.id}, {$set: {plusCoins: user.plusCoins-gift}});
         // И начисляются на счёт получателя
         mongoUsers.findOne({userId: msg.reply_to_message.from.id}, function (err, user) {
           if (!user) {
-            mongoUsers.insertOne({userId: msg.reply_to_message.from.id, repPoints: gift});
-          } else if (!user.repPoints) {
-            mongoUsers.update({userId: msg.reply_to_message.from.id}, {$set: {repPoints: gift}})
+            mongoUsers.insertOne({userId: msg.reply_to_message.from.id, plusCoins: gift});
+          } else if (!user.plusCoins) {
+            mongoUsers.update({userId: msg.reply_to_message.from.id}, {$set: {plusCoins: gift}})
           } else {
-            mongoUsers.update({userId: msg.reply_to_message.from.id}, {$set: {repPoints: user.repPoints+gift}});
+            mongoUsers.update({userId: msg.reply_to_message.from.id}, {$set: {plusCoins: user.plusCoins+gift}});
           }
         })
       } else {
-        bot.sendMessage(msg.chat.id, messages.buyNotEnough.replace('$name', tools.nameToBeShow(msg.from)).replace('$points', user.repPoints));
+        bot.sendMessage(msg.chat.id, messages.buyNotEnough.replace('$name', tools.nameToBeShow(msg.from)).replace('$points', user.plusCoins));
       }
     })
     }
@@ -300,12 +297,12 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
   bot.onText(/^\/pin\b/, (msg) => {
     if (msg.chat.type == 'supergroup' && msg.reply_to_message && msg.reply_to_message.from.id != botMe.id) {
       mongoUsers.findOne({userId: msg.from.id}, function (err, user) {
-        if (user && user.repPoints && user.repPoints >= messages.pinPrice) {
-          bot.sendMessage(msg.chat.id, messages.pinMessage.replace('$name', tools.nameToBeShow(msg.from)).replace('$price', tools.declension(messages.pinPrice, 'plus')).replace('$points', user.repPoints-messages.pinPrice));
-          mongoUsers.update({userId: msg.from.id}, {$set: {repPoints: user.repPoints-messages.pinPrice}});
+        if (user && user.plusCoins && user.plusCoins >= messages.pinPrice) {
+          bot.sendMessage(msg.chat.id, messages.pinMessage.replace('$name', tools.nameToBeShow(msg.from)).replace('$price', tools.declension(messages.pinPrice, 'plus')).replace('$points', user.plusCoins-messages.pinPrice));
+          mongoUsers.update({userId: msg.from.id}, {$set: {plusCoins: user.plusCoins-messages.pinPrice}});
           bot.pinChatMessage(config.group, msg.reply_to_message.message_id);
         } else {
-          bot.sendMessage(msg.chat.id, messages.buyNotEnough.replace('$name', tools.nameToBeShow(msg.from)).replace('$points', user.repPoints));
+          bot.sendMessage(msg.chat.id, messages.buyNotEnough.replace('$name', tools.nameToBeShow(msg.from)).replace('$points', user.plusCoins));
         }
       })
     }
@@ -594,13 +591,13 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
           break;
         }
         mongoUsers.findOne({userId: msg.from.id}, function (err, user) {
-          if (user && user.repPoints && user.repPoints >= messages.quotePrice) {
+          if (user && user.plusCoins && user.plusCoins >= messages.quotePrice) {
             fs.readFile('./texts/wheel.txt', 'utf8', function(err, data){
               var lines = data.split('\n\n');
-              bot.editMessageText(messages.buyComplete.replace('$name', tools.nameToBeShow(msg.from)).replace('$price', tools.declension(messages.quotePrice, 'plus')).replace('$thing', 'цитата').replace('$points', user.repPoints-messages.quotePrice), {chat_id: msg.message.chat.id, message_id: msg.message.message_id, parse_mode : 'markdown'});
+              bot.editMessageText(messages.buyComplete.replace('$name', tools.nameToBeShow(msg.from)).replace('$price', tools.declension(messages.quotePrice, 'plus')).replace('$thing', 'цитата').replace('$points', user.plusCoins-messages.quotePrice), {chat_id: msg.message.chat.id, message_id: msg.message.message_id, parse_mode : 'markdown'});
               bot.sendMessage(config.group, tools.getRandom(lines),{reply_to_message_id: msg.message.message_id});
             });
-            mongoUsers.update({userId: msg.from.id}, {$set: {repPoints: user.repPoints-messages.quotePrice}});
+            mongoUsers.update({userId: msg.from.id}, {$set: {plusCoins: user.plusCoins-messages.quotePrice}});
           } else bot.answerCallbackQuery(msg.id, messages.buyNotEnough);
         });
         break;
@@ -611,13 +608,13 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
           break;
         }
         mongoUsers.findOne({userId: msg.from.id}, function (err, user) {
-          if (user && user.repPoints && user.repPoints >= messages.jokePrice) {
+          if (user && user.plusCoins && user.plusCoins >= messages.jokePrice) {
             fs.readFile('./texts/jokes.txt', 'utf8', function(err, data){
               var lines = data.split('\n\n');
-              bot.editMessageText(messages.buyComplete.replace('$name', tools.nameToBeShow(msg.from)).replace('$price', tools.declension(messages.jokePrice, 'plus')).replace('$thing', 'шутка').replace('$points', user.repPoints-messages.jokePrice), {chat_id: msg.message.chat.id, message_id: msg.message.message_id, parse_mode : 'markdown'});
+              bot.editMessageText(messages.buyComplete.replace('$name', tools.nameToBeShow(msg.from)).replace('$price', tools.declension(messages.jokePrice, 'plus')).replace('$thing', 'шутка').replace('$points', user.plusCoins-messages.jokePrice), {chat_id: msg.message.chat.id, message_id: msg.message.message_id, parse_mode : 'markdown'});
               bot.sendMessage(config.group, tools.getRandom(lines),{reply_to_message_id: msg.message.message_id});
             });
-            mongoUsers.update({userId: msg.from.id}, {$set: {repPoints: user.repPoints-messages.jokePrice}});
+            mongoUsers.update({userId: msg.from.id}, {$set: {plusCoins: user.plusCoins-messages.jokePrice}});
           } else bot.answerCallbackQuery(msg.id, messages.buyNotEnough);
         });
         break;
@@ -879,15 +876,16 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
   }
 
   // Функция начисления очков благодарности
-  function reputationInc(msg) {
-    mongoUsers.findOne({userId: msg.reply_to_message.from.id}, function (err, user) {
+  function reputationInc(id) {
+    mongoUsers.findOne({userId: id}, function (err, user) {
       if (!user) {
-        mongoUsers.insertOne({userId: msg.reply_to_message.from.id, name: tools.nameToBeShow(msg.reply_to_message.from), repPoints: 1});
-      } else if (!user.repPoints) {
-        mongoUsers.update({userId: msg.reply_to_message.from.id}, {$set: {name: tools.nameToBeShow(msg.reply_to_message.from), repPoints: 1}})
+        mongoUsers.insertOne({userId: id, plus: 1, plusCoins: 1});
+      } else if (!user.plusCoins) {
+        mongoUsers.update({userId: id}, {$set: {plus: 1, plusCoins: 1}})
       } else {
-        var count = user.repPoints + 1;
-        mongoUsers.update({userId: msg.reply_to_message.from.id}, {$set: {name: tools.nameToBeShow(msg.reply_to_message.from), repPoints: count}})
+        var count1 = user.plus + 1;
+        var count2 = user.plusCoins + 1;
+        mongoUsers.update({userId: id}, {$set: {plus: count1, plusCoins: count2}})
       }
     })
   };

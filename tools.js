@@ -18,9 +18,27 @@ function nameToBeShow(msg) {
 };
 
 // Выбор случайной строки из массива
-function getRandom(message) {
-  var randomMessage = Math.floor(Math.random() * message.length);
-  return message[randomMessage];
+function getRandom(array) {
+  var randomMessage = Math.floor(Math.random() * array.length);
+  return array[randomMessage];
+};
+
+function advancedRandom(array) {
+  // Строки копируются в другой массив, умножаясь в соответствии со значением weight
+  var arrayIds = [];
+  for(var i=0;i<array.length;i++){
+      for(var x=0;x<array[i].weight;x++){
+          arrayIds.push(array[i].text);
+      }
+  }
+  // Из размноженных элементов выбирается случайный
+  var index = Math.floor(Math.random() * (arrayIds.length));
+  // В котором случайно выбираются подстроки, оформленные в {}
+  var str = arrayIds[index].replace(/{([^}]+)}/g, function(p, m){
+    var arr = m.split("|");
+    return arr[~~(Math.random() * arr.length)];
+  });
+  return str;
 };
 
 // Выбор случайной строки из текстового файла
@@ -185,6 +203,7 @@ function voiceConvert(file) {
 
 exports.nameToBeShow = nameToBeShow;
 exports.getRandom = getRandom;
+exports.advancedRandom = advancedRandom;
 exports.getRandomLine = getRandomLine;
 exports.compareNumeric = compareNumeric;
 exports.capitalize = capitalize;
