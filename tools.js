@@ -13,7 +13,8 @@ function nameToBeShow(msg) {
   if (msg.last_name != undefined) {
     return msg.first_name + ' ' + msg.last_name;
   } else {
-    return msg.first_name;
+    // Убирает собаку из имени, чтобы не получалась ссылка
+    return msg.first_name.replace(/^@(.?)/g, '$1');
   }
 };
 

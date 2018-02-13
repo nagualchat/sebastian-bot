@@ -1,3 +1,6 @@
+// Чтобы не получать предупреждение node-telegram-bot-api: automatic enabling of cancellation of promises is deprecated
+process.env["NTBA_FIX_319"] = 1;
+
 const TelegramBot = require('node-telegram-bot-api');
 const MongoClient = require('mongodb').MongoClient;
 const osTmpdir = require('os-tmpdir');
@@ -14,7 +17,7 @@ var session = {};
 // Хак для того, чтобы не зависнуть на стадии building во время развёртывания в now
 const http = require('http');
 http.createServer(function (req, res) {
-  res.write('Hello World!');
+  res.write('nothing here');
   res.end();
 }).listen(8080);
 
@@ -29,7 +32,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
   const mongoDeleted = database.collection('deleted_messages');
   const mongoBooks = database.collection('books');
 
-  const bot = new TelegramBot(config.token, {polling: true});
+  const bot = new TelegramBot(config.telegramToken, {polling: true});
   bot.getMe().then((res) => { botMe = res });
   bot.getChat(config.group).then((res) => { group = res });
 
@@ -91,7 +94,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
     };
     mongoUsers.findOne({userId: msg.new_chat_member.id}, function (err, user) {
       if (!user) {
-        bot.sendMessage(msg.chat.id, tools.advancedRandom(messages.welcomeNew).replace('$name', tools.nameToBeShow(msg.new_chat_member)), {parse_mode : 'markdown'});
+        bot.sendMessage(msg.chat.id, tools.advancedRandom(messages.welcomeNew).replace('$name', tools.nameToBeShow(msg.new_chat_member)), {parse_mode : 'HTML'});
         mongoUsers.insertOne({userId: msg.new_chat_member.id, name: tools.nameToBeShow(msg.new_chat_member), joinDate: msg.date, antiSpam: 1});
       } else {
         if (moment().diff(moment.unix(user.joinDate), 'hours') <= config.joinPeriod) {
@@ -109,17 +112,17 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
   // Срабатывает на forward и ссылки типа @username, t.me, telegram.me, удаляя содержащие их сообщения
   // Удалённые сообщения сохраняются и при запросе высылаются пользователю в приват
   bot.on('message', async (msg) => {
-    mongoUsers.findOne({userId: msg.from.id, antiSpam: 1}, async function (err, user) {
+    mongoUsers.findOne({userId: msg.from.id, antiSpam: {$gte: 1}}, async function (err, user) {
       var deleted = false;
       if (user) {
         if (msg.forward_from_chat) {
           if (!(msg.document || msg.audio)) {
-            deleteSpam(msg);
+            deleteSpam(msg, user.antiSpam);
             deleted = true;
           }
         } else if (msg.text) {
           if (/t(?:elegram)?\.me/.test(msg.text)) {
-            deleteSpam(msg);
+            deleteSpam(msg, user.antiSpam);
             deleted = true;
           }
           var entities = msg.entities || [];
@@ -129,7 +132,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
               try {
                 var chat = await bot.getChat(mentioned);
                 if (chat && chat.type == 'channel' || chat && chat.type == 'supergroup') {
-                  deleteSpam(msg);
+                  deleteSpam(msg, user.antiSpam);
                   deleted = true;
                   break;
                 }
@@ -139,7 +142,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
           }
         } else if (msg.caption) {
           if (/t(?:elegram)?\.me/.test(msg.caption)) {
-            deleteSpam(msg);
+            deleteSpam(msg, user.antiSpam);
             deleted = true;
           }
           var entities = msg.caption_entities || [];
@@ -149,7 +152,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
               try {
                 var chat = await bot.getChat(mentioned);
                 if (chat && chat.type == 'channel' || chat && chat.type == 'supergroup') {
-                  deleteSpam(msg);
+                  deleteSpam(msg, user.antiSpam);
                   deleted = true;
                   break;
                 }
@@ -219,7 +222,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
   });
 
   // Начисление очков благодарности
-  bot.onText(/плюсую|👍|\+|спасибо|благодарю|спс|thx/i, (msg) => {
+  bot.onText(/плюсую|👍|^\+|спасибо|благодарю|спс|thx/i, (msg) => {
     if (msg.reply_to_message) {
       if (msg.reply_to_message.from.id != msg.from.id && msg.reply_to_message.from.id != botMe.id) {
         reputationInc(msg.reply_to_message.from.id);
@@ -262,12 +265,12 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
     if (msg.chat.type == 'supergroup') {
       mongoUsers.findOne({userId: msg.from.id}, function (err, user) {
         if (!user || user.plusCoins == undefined) user.plusCoins = 0;
-        bot.sendMessage(msg.chat.id, messages.repStore.replace('$name', tools.nameToBeShow(msg.from)).replace('$points', tools.declension(user.plusCoins, 'plus')), {parse_mode : 'markdown', reply_markup: {inline_keyboard: [[{text: 'Цитата', callback_data: 'buy_quote_' + msg.from.id}, {text: 'Шутка', callback_data: 'buy_joke_' + msg.from.id}]]}});
+        bot.sendMessage(msg.chat.id, messages.repStore.replace('$name', tools.nameToBeShow(msg.from)).replace('$points', tools.declension(user.plusCoins, 'plus')), {parse_mode : 'HTML', reply_markup: {inline_keyboard: [[{text: 'Цитата', callback_data: 'buy_quote_' + msg.from.id}, {text: 'Шутка', callback_data: 'buy_joke_' + msg.from.id}]]}});
       })
     } else bot.sendMessage(msg.chat.id, 'Эта команду следует вызывать в общем чате.');
   });
 
-  // Команда \gift для дарения плюсов другому участнику
+  // Команда /gift для дарения плюсов другому участнику
   bot.onText(/^\/gift\b ?(.+)?/, (msg, match) => {
     if (msg.chat.type == 'supergroup' && msg.reply_to_message && msg.reply_to_message.from.id != msg.from.id && msg.reply_to_message.from.id != botMe.id && match[1]) {
       var gift = Number(match[1]);
@@ -314,7 +317,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
   });
 
   bot.onText(/^\/help\b/, (msg) => {
-    bot.sendMessage(msg.chat.id, messages.help, {parse_mode : 'markdown', disable_web_page_preview: 'true'});
+    bot.sendMessage(msg.chat.id, messages.help, {parse_mode : 'html', disable_web_page_preview: 'true'});
   });
 
   bot.onText(/^\/ahelp\b/, (msg) => {
@@ -548,7 +551,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
   }
 
   // Обработка нажатий на кнопки
-  bot.on('callback_query', (msg) => {
+  bot.on('callback_query', async (msg) => {
     switch (msg.data) {
     // Обработчик кнопки, пересылающей сохранённое в канале сообщение пользователю в приват
     case 'send_del_msg':
@@ -594,7 +597,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
           if (user && user.plusCoins && user.plusCoins >= messages.quotePrice) {
             fs.readFile('./texts/wheel.txt', 'utf8', function(err, data){
               var lines = data.split('\n\n');
-              bot.editMessageText(messages.buyComplete.replace('$name', tools.nameToBeShow(msg.from)).replace('$price', tools.declension(messages.quotePrice, 'plus')).replace('$thing', 'цитата').replace('$points', user.plusCoins-messages.quotePrice), {chat_id: msg.message.chat.id, message_id: msg.message.message_id, parse_mode : 'markdown'});
+              bot.editMessageText(messages.buyComplete.replace('$name', tools.nameToBeShow(msg.from)).replace('$price', tools.declension(messages.quotePrice, 'plus')).replace('$thing', 'цитата').replace('$points', user.plusCoins-messages.quotePrice), {chat_id: msg.message.chat.id, message_id: msg.message.message_id});
               bot.sendMessage(config.group, tools.getRandom(lines),{reply_to_message_id: msg.message.message_id});
             });
             mongoUsers.update({userId: msg.from.id}, {$set: {plusCoins: user.plusCoins-messages.quotePrice}});
@@ -611,28 +614,12 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
           if (user && user.plusCoins && user.plusCoins >= messages.jokePrice) {
             fs.readFile('./texts/jokes.txt', 'utf8', function(err, data){
               var lines = data.split('\n\n');
-              bot.editMessageText(messages.buyComplete.replace('$name', tools.nameToBeShow(msg.from)).replace('$price', tools.declension(messages.jokePrice, 'plus')).replace('$thing', 'шутка').replace('$points', user.plusCoins-messages.jokePrice), {chat_id: msg.message.chat.id, message_id: msg.message.message_id, parse_mode : 'markdown'});
+              bot.editMessageText(messages.buyComplete.replace('$name', tools.nameToBeShow(msg.from)).replace('$price', tools.declension(messages.jokePrice, 'plus')).replace('$thing', 'шутка').replace('$points', user.plusCoins-messages.jokePrice), {chat_id: msg.message.chat.id, message_id: msg.message.message_id});
               bot.sendMessage(config.group, tools.getRandom(lines),{reply_to_message_id: msg.message.message_id});
             });
             mongoUsers.update({userId: msg.from.id}, {$set: {plusCoins: user.plusCoins-messages.jokePrice}});
           } else bot.answerCallbackQuery(msg.id, messages.buyNotEnough);
         });
-        break;
-      // Меню, высылаемое админу в приват при срабатывании антиспама
-      case /antispam_(.*)_kick_/.test(msg.data) && msg.data:
-        var id = msg.data.match(/antispam_(.*)_kick_(.*)/i);
-        bot.kickChatMember(config.group, id[2]);
-        bot.unbanChatMember(config.group, id[2]);
-        bot.editMessageText(messages.kick.replace('$username', id[2]), {chat_id: config.admin, message_id: id[1]});
-        break;
-      case /antispam_(.*)_ban_/.test(msg.data) && msg.data:
-        var id = msg.data.match(/antispam_(.*)_ban_(.*)/i);
-        bot.kickChatMember(config.group, id[2]);
-        bot.editMessageText(messages.ban.replace('$username', id[2]), {chat_id: config.admin, message_id: id[1]});
-        break;
-      case /antispam_(.*)_cancel/.test(msg.data) && msg.data:
-        var id = msg.data.match(/antispam_(.*)_/i);
-        bot.editMessageText(messages.menuCancel, {chat_id: config.admin, message_id: id[1]});
         break;
       // Кнопки меню, выводящегося при получении форвард-сообщений
       case 'delete':
@@ -822,7 +809,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
     }
     // Если ошибка при отправке в канал не возникала, то высылаются информационные сообщения о произведённом удалении
     if (!error) {
-      report = await bot.sendMessage(config.group, message, {parse_mode : 'HTML', reply_markup: {inline_keyboard: [[{text: messages. btnShowDeleted, callback_data: 'send_del_msg'}]]}});
+      report = await bot.sendMessage(config.group, message, {parse_mode : 'HTML', reply_markup: {inline_keyboard: [[{text: messages.btnShowDeleted, callback_data: 'send_del_msg'}]]}});
       mongoDeleted.insertOne({reportId: report.message_id, forwardId: forwList});
       bot.sendMessage(config.channel, '<a href="http://t.me/' + group.username + '/' + report.message_id + '">' + '[←]' + '</a> ' + message + ' Модератор: <a href=\"tg://user?id=' + msg.from.id + '/\">' + tools.nameToBeShow(msg.from) + '</a>.', {parse_mode : 'HTML', disable_web_page_preview: 'true'});
       bot.editMessageText(message, {chat_id: session[msg.from.id].botMsg.chat.id, message_id: session[msg.from.id].botMsg.message_id, parse_mode : 'HTML'});
@@ -863,16 +850,23 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
 
   // Функция удаления сообщений для антиспама
   // Перед удалением сообщение пересылается в канал на хранение
-  const deleteSpam = async (msg) => {
+  const deleteSpam = async (msg, count) => {
     var report, areport, forward;
+    console.log('[Log] Число срабатываний антиспама: ' + count);
     forward = await bot.forwardMessage(config.channel, msg.chat.id, msg.message_id, {disable_notification:true});
-    report = await bot.sendMessage(msg.chat.id, messages.deleteSpam.replace('$username', '<a href=\"tg://user?id=' + msg.from.id + '/\">' +
-    tools.nameToBeShow(msg.from) + '</a>'), {parse_mode : 'HTML', reply_markup: {inline_keyboard: [[{text: messages. btnShowDeleted, callback_data: 'send_del_msg'}]]}});
+    if (count >= 2) {
+      report = await bot.sendMessage(msg.chat.id, messages.deleteSpamBan.replace('$username', '<a href=\"tg://user?id=' + msg.from.id + '/\">' +
+      tools.nameToBeShow(msg.from) + '</a>'), {parse_mode : 'HTML', reply_markup: {inline_keyboard: [[{text: messages.btnShowDeleted, callback_data: 'send_del_msg'}]]}});
+      bot.deleteMessage(msg.chat.id, msg.message_id);
+      bot.kickChatMember(msg.chat.id, msg.from.id);
+    } else {
+      report = await bot.sendMessage(msg.chat.id, messages.deleteSpamKick.replace('$username', '<a href=\"tg://user?id=' + msg.from.id + '/\">' +
+      tools.nameToBeShow(msg.from) + '</a>'), {parse_mode : 'HTML', reply_markup: {inline_keyboard: [[{text: messages.btnShowDeleted, callback_data: 'send_del_msg'}]]}});
+      bot.kickChatMember(msg.chat.id, msg.from.id);
+      bot.unbanChatMember(msg.chat.id, msg.from.id);
+      mongoUsers.update({userId: msg.from.id}, {$set: {antiSpam: 2}});
+    }
     mongoDeleted.insertOne({msg, reportId: report.message_id, forwardId: forward.message_id});
-    bot.deleteMessage(msg.chat.id, msg.message_id);
-    // Меню, высылаемое админу в приват при срабатывании антиспама
-    areport = await bot.sendMessage(config.admin, 'Антиспам сработал');
-    await bot.editMessageText('Антиспам сработал на сообщение <a href="http://t.me/chatbotlog/' + forward.message_id + '">' + report.message_id + '</a>. Что сделать с отправившим?', {chat_id: areport.chat.id, message_id: areport.message_id, parse_mode : 'HTML', disable_web_page_preview: 'true', reply_markup: {inline_keyboard: [[{text: 'Выгнать', callback_data: 'antispam_' + areport.message_id + '_kick_' + msg.from.id}, {text: 'Забанить', callback_data: 'antispam_' + areport.message_id + '_ban_' + msg.from.id}, {text: 'Ничего', callback_data: 'antispam_' + areport.message_id + '_cancel'}]]}});
   }
 
   // Функция начисления очков благодарности
