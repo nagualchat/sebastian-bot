@@ -14,7 +14,7 @@ const tools = require('./tools');
 var lastGoodDay, lastGoodNight;
 var session = {};
 
-// Хак для того, чтобы не зависнуть на стадии building во время развёртывания в now
+// Чтобы не зависнуть на стадии building во время развёртывания в now
 const http = require('http');
 http.createServer(function (req, res) {
   res.write('nothing here');
@@ -31,6 +31,9 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
   const mongoUsers = database.collection('users');
   const mongoDeleted = database.collection('deleted_messages');
   const mongoBooks = database.collection('books');
+
+  // Автоудаление сообщений из лога (604800 секунд = 7 дней)
+  mongoLog.createIndex( { "createdAt": 1 }, { expireAfterSeconds: 604800 } )
 
   const bot = new TelegramBot(config.telegramToken, {polling: true});
   bot.getMe().then((res) => { botMe = res });
@@ -95,7 +98,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
     mongoUsers.findOne({userId: msg.new_chat_member.id}, function (err, user) {
       if (!user) {
         bot.sendMessage(msg.chat.id, tools.advancedRandom(messages.welcomeNew).replace('$name', tools.nameToBeShow(msg.new_chat_member)), {parse_mode : 'HTML'});
-        mongoUsers.insertOne({userId: msg.new_chat_member.id, name: tools.nameToBeShow(msg.new_chat_member), joinDate: msg.date, antiSpam: 1});
+        mongoUsers.insertOne({userId: msg.new_chat_member.id, name: tools.nameToBeShow(msg.new_chat_member), joinDate: msg.date, antiSpam: config.antiSpamCounter});
       } else {
         if (moment().diff(moment.unix(user.joinDate), 'hours') <= config.joinPeriod) {
           bot.sendMessage(msg.chat.id, tools.advancedRandom(messages.welcomeRet1).replace('$name', tools.nameToBeShow(msg.new_chat_member)));
@@ -112,6 +115,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
   // Срабатывает на forward и ссылки типа @username, t.me, telegram.me, удаляя содержащие их сообщения
   // Удалённые сообщения сохраняются и при запросе высылаются пользователю в приват
   bot.on('message', async (msg) => {
+    // $gte - больше или равно
     mongoUsers.findOne({userId: msg.from.id, antiSpam: {$gte: 1}}, async function (err, user) {
       var deleted = false;
       if (user) {
@@ -162,7 +166,12 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
           }
         }
         if (deleted == false) {
-          mongoUsers.update({userId: msg.from.id}, {$unset: {antiSpam: ''}});
+          var count = user.antiSpam - 1;
+          mongoUsers.update({userId: msg.from.id}, {$set: {antiSpam: count}});
+          if (count == 0) {
+            mongoUsers.update({userId: msg.from.id}, {$unset: {antiSpam}});
+          }
+          console.log('[Log] Для участника ' + tools.nameToBeShow(msg.from) + ' значение счётчика антиспама уменьшено: ' + count);
         }
       }
     });
@@ -215,7 +224,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
     const answerChoice = msg.text.match(/себастьян(\,)? (.+) или (.+)\?/i);
     if (answerChoice) {
       var index = Math.floor(Math.random() * 2 + 2);
-      bot.sendMessage(msg.chat.id, tools.capitalize( tools.getRandom(messages.answerChoice).replace('$variant', answerChoice[index])));
+      bot.sendMessage(msg.chat.id, tools.capitalize(tools.getRandom(messages.answerChoice).replace('$variant', answerChoice[index])));
     } else if (answer) {
       bot.sendMessage(msg.chat.id,  tools.getRandom(messages.answer));
     }
@@ -229,7 +238,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
         console.log('[Log] ' + tools.nameToBeShow(msg.reply_to_message.from) + ' (' + msg.reply_to_message.from.id + ') начислен плюс');
       }
     } else {
-      // Находит предыдущее сообщение (задержка нужна потому что иногда читает раньше, чем успевает записаться mongoLog)
+      // Находит предыдущее сообщение (задержка нужна потому что иногда читает раньше, чем успевает записаться БД)
       setTimeout(function() {
         mongoLog.find({}).sort({_id:-1}).skip(1).limit(1).forEach(function(prev) {
           if (prev.from.id != msg.from.id && prev.from.id != botMe.id) {
@@ -241,7 +250,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
     }
   });
 
-  // Команда /top
+  // Команда /top, отображающая список участников с самым большим количеством плюсов
   bot.onText(/^\/top\b/, (msg) => {
     mongoUsers.find({plusCoins: {$gte: 1}}).limit(20).sort({plusCoins: -1}).toArray(async function(err, users) {
       var s = [];
@@ -443,36 +452,36 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
       var from = {};
       if (msg.forward_from_chat) {
         if (msg.from.last_name) {
-          from = {'id' : msg.from.id, 'first_name' : msg.from.first_name, 'last_name' : msg.from.last_name};
+          from = {'id': msg.from.id, 'first_name': msg.from.first_name, 'last_name': msg.from.last_name};
         } else {
-          from = {'id' : msg.from.id, 'first_name' : msg.from.first_name};
+          from = {'id': msg.from.id, 'first_name': msg.from.first_name};
         }
         if (msg.text) {
-          mongoLog.insertOne({message_id: msg.message_id, from: from, 'chat' : msg.forward_from_chat.id, 'date' : msg.forward_date, 'text' : msg.text});
+          mongoLog.insertOne({"createdAt": new Date(), message_id: msg.message_id, from: from, 'chat': msg.forward_from_chat.id, 'date': msg.forward_date, 'text': msg.text});
         } else {
-          mongoLog.insertOne({message_id: msg.message_id, from: from, 'chat' : msg.forward_from_chat.id, 'date' : msg.forward_date,});
+          mongoLog.insertOne({"createdAt": new Date(), message_id: msg.message_id, from: from, 'chat': msg.forward_from_chat.id, 'date': msg.forward_date,});
         }
       } else if (msg.forward_from) {
           if (msg.from.last_name) {
-            from = {'id' : msg.from.id, 'first_name' : msg.from.first_name, 'last_name' : msg.from.last_name};
+            from = {'id': msg.from.id, 'first_name': msg.from.first_name, 'last_name': msg.from.last_name};
           } else {
-            from = {'id' : msg.from.id, 'first_name' : msg.from.first_name};
+            from = {'id': msg.from.id, 'first_name': msg.from.first_name};
           }
           if (msg.text) {
-            mongoLog.insertOne({message_id: msg.message_id, from: from, 'date' : msg.forward_date, 'text' : msg.text});
+            mongoLog.insertOne({"createdAt": new Date(), message_id: msg.message_id, from: from, 'date': msg.forward_date, 'text': msg.text});
           } else {
-            mongoLog.insertOne({message_id: msg.message_id, from: from, 'date' : msg.forward_date});
+            mongoLog.insertOne({"createdAt": new Date(), message_id: msg.message_id, from: from, 'date': msg.forward_date});
           }
       } else {
         if (msg.from.last_name) {
-          from = {'id' : msg.from.id, 'first_name' : msg.from.first_name, 'last_name' : msg.from.last_name};
+          from = {'id': msg.from.id, 'first_name': msg.from.first_name, 'last_name': msg.from.last_name};
         } else {
-          from = {'id' : msg.from.id, 'first_name' : msg.from.first_name};
+          from = {'id': msg.from.id, 'first_name': msg.from.first_name};
         }
         if (msg.text) {
-          mongoLog.insertOne({message_id: msg.message_id, from: from, 'date' : msg.date, 'text' : msg.text});
+          mongoLog.insertOne({"createdAt": new Date(), message_id: msg.message_id, from: from, 'date': msg.date, 'text': msg.text});
         } else {
-          mongoLog.insertOne({message_id: msg.message_id, from: from, 'date' : msg.date});
+          mongoLog.insertOne({"createdAt": new Date(), message_id: msg.message_id, from: from, 'date': msg.date});
         }
       }
     }
@@ -532,8 +541,8 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
   });
 
   // Когда окончена пересылка сообщений боту, процесс приёма останавливается
-  // Бот спрашивает что с этими сообщениями делать - удалить или ограничить пользователя (если сообщения пренадлежат одному)
-  // В session добавляется объект botMsg, содержащий сообщение с вопросом бота
+  // Бот спрашивает что с этими сообщениями делать - удалить или ограничить пользователя (если сообщения принадлежат одному)
+  // В session добавляется объект botMsg, ссылающийся на сообщение с вопросом бота
   async function checkRecTime(msg) {
     if (moment().diff(moment.unix(session[msg.from.id].recTime), 'seconds') >= 2) {
       if (session[msg.from.id].userId.length == 1) {
@@ -572,7 +581,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
               }
           }
         } else {
-          // Для совместимости со старыми удалениями (тогда find.forwardId не был массивом)
+          // Для совместимости со старыми удалениями (раньше find.forwardId не был массивом)
           try {
             await bot.forwardMessage(msg.from.id, config.channel, find.forwardId);
           } catch(err) {
@@ -748,7 +757,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
     var report, forward;
     var ii = 0, message = '', names = '', error = '';
     var usrList = {}, forwList = [];
-    session[msg.from.id].toDel.sort(tools.compareNumeric);   // Сортировка для последовательного удаления
+    session[msg.from.id].toDel.sort(tools.compareNumeric); // Сортировка для последовательного удаления
     if (session[msg.from.id].toDel.length > 10) {
       bot.editMessageText('Не больше 10 сообщений за раз.', {chat_id: session[msg.from.id].botMsg.chat.id, message_id: session[msg.from.id].botMsg.message_id});
       clearTimeout(session[msg.from.id].timeout);
@@ -784,7 +793,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
           }
         }
       } else {
-        // Или не удаляются; таком случае нужно убрать те сообщения, которые в канал всё таки ушли
+        // Или не удаляются; таком случае нужно вычистить те сообщения, которые в канал всё таки успели уйти
         for (var i = 0; i < forwList.length; i++) {
           try {
             await bot.deleteMessage(config.channel, forwList[i]);
@@ -852,22 +861,24 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
   // Перед удалением сообщение пересылается в канал на хранение
   const deleteSpam = async (msg, count) => {
     var report, areport, forward;
-    console.log('[Log] Число срабатываний антиспама: ' + count);
     forward = await bot.forwardMessage(config.channel, msg.chat.id, msg.message_id, {disable_notification:true});
-    if (count >= 2) {
-      report = await bot.sendMessage(msg.chat.id, messages.deleteSpamBan.replace('$username', '<a href=\"tg://user?id=' + msg.from.id + '/\">' +
-      tools.nameToBeShow(msg.from) + '</a>'), {parse_mode : 'HTML', reply_markup: {inline_keyboard: [[{text: messages.btnShowDeleted, callback_data: 'send_del_msg'}]]}});
-      bot.deleteMessage(msg.chat.id, msg.message_id);
-      bot.kickChatMember(msg.chat.id, msg.from.id);
-    } else {
-      report = await bot.sendMessage(msg.chat.id, messages.deleteSpamKick.replace('$username', '<a href=\"tg://user?id=' + msg.from.id + '/\">' +
-      tools.nameToBeShow(msg.from) + '</a>'), {parse_mode : 'HTML', reply_markup: {inline_keyboard: [[{text: messages.btnShowDeleted, callback_data: 'send_del_msg'}]]}});
-      bot.kickChatMember(msg.chat.id, msg.from.id);
-      bot.unbanChatMember(msg.chat.id, msg.from.id);
-      mongoUsers.update({userId: msg.from.id}, {$set: {antiSpam: 2}});
-    }
-    mongoDeleted.insertOne({msg, reportId: report.message_id, forwardId: forward.message_id});
-  }
+    mongoUsers.findOne({userId: msg.from.id}, async function (err, user) {
+      if (user.potentialSpammer) {
+        report = await bot.sendMessage(msg.chat.id, messages.deleteSpam.replace('$username', '<a href=\"tg://user?id=' + msg.from.id + '/\">' +
+        tools.nameToBeShow(msg.from) + '</a>'), {parse_mode : 'HTML', reply_markup: {inline_keyboard: [[{text: messages.btnShowDeleted, callback_data: 'send_del_msg'}]]}});
+        bot.deleteMessage(msg.chat.id, msg.message_id);
+        bot.kickChatMember(msg.chat.id, msg.from.id);
+      } else {
+        report = await bot.sendMessage(msg.chat.id, messages.deleteSpam.replace('$username', '<a href=\"tg://user?id=' + msg.from.id + '/\">' +
+        tools.nameToBeShow(msg.from) + '</a>'), {parse_mode : 'HTML', reply_markup: {inline_keyboard: [[{text: messages.btnShowDeleted, callback_data: 'send_del_msg'}]]}});
+        bot.kickChatMember(msg.chat.id, msg.from.id);
+        bot.unbanChatMember(msg.chat.id, msg.from.id);
+        mongoUsers.update({userId: msg.from.id}, {$set: {potentialSpammer: true}});
+        console.log('[Log] Участник ' + tools.nameToBeShow(msg.from) + ' отмечен как потенциальный спаммер');
+      }
+      mongoDeleted.insertOne({msg, reportId: report.message_id, forwardId: forward.message_id});
+    })
+  };
 
   // Функция начисления очков благодарности
   function reputationInc(id) {

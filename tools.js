@@ -74,7 +74,7 @@ function decl(number, titles) {
 
 // Склонение слов
 function declension(match, mode) {
-  var words = {message: ['сообщение', 'сообщения', 'сообщений'], plus: ['плюс', 'плюса', 'плюсов']};
+  let words = {message: ['сообщение', 'сообщения', 'сообщений'], plus: ['плюс', 'плюса', 'плюсов']};
   return decl(match, words[mode]);
 }
 
@@ -82,18 +82,18 @@ function declension(match, mode) {
 function dconvert(match, mode) {
   var regexp = match.match(/(\d*)(\S)/i);
   // Склонения можно определить, примеряя к цифрам 1, 3 и 5
-  var words = {day: ['день', 'дня', 'дней'], hour: ['час', 'часа', 'часов']};
+  let words = {day: ['день', 'дня', 'дней'], hour: ['час', 'часа', 'часов']};
   if (regexp[2] == 'd') {
     if (mode == 'date') {
       return date = moment().add(regexp[1], 'days').unix();
     } else {
-      return decl(regexp[1], words[day]);
+      return decl(regexp[1], words.day);
     }
   } else if (regexp[2] == 'h') {
       if (mode == 'date') {
         return date = moment().add(regexp[1], 'hours').unix();
     } else {
-      return decl(regexp[1], words[hour]);
+      return decl(regexp[1], words.hour);
     }
   } else return 'err';
 };
