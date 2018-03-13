@@ -167,11 +167,13 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
         }
         if (deleted == false) {
           var count = user.antiSpam - 1;
-          mongoUsers.update({userId: msg.from.id}, {$set: {antiSpam: count}});
-          if (count == 0) {
-            mongoUsers.update({userId: msg.from.id}, {$unset: {antiSpam}});
+          if (count >= 1) {
+            mongoUsers.update({userId: msg.from.id}, {$set: {antiSpam: count}});
+            console.log('[Log] Для участника ' + tools.nameToBeShow(msg.from) + ' значение счётчика антиспама уменьшено: ' + count);
+          } else {
+            mongoUsers.update({userId: msg.from.id}, {$unset: {antiSpam: ''}});
+            console.log('[Log] Для участника ' + tools.nameToBeShow(msg.from) + ' значение счётчика антиспама уменьшено: ' + count + ' (выкл)');
           }
-          console.log('[Log] Для участника ' + tools.nameToBeShow(msg.from) + ' значение счётчика антиспама уменьшено: ' + count);
         }
       }
     });
