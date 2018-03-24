@@ -324,7 +324,7 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
 
   // Вывод справок
   bot.onText(/^\/start\b/, (msg) => {
-    if (msg.chat.type == 'private') bot.sendMessage(msg.chat.id, messages.help, {parse_mode : 'markdown', disable_web_page_preview: 'true'});
+    if (msg.chat.type == 'private') bot.sendMessage(msg.chat.id, messages.help, {parse_mode : 'html', disable_web_page_preview: 'true'});
   });
 
   bot.onText(/^\/help\b/, (msg) => {
@@ -434,9 +434,16 @@ MongoClient.connect(config.mongoConnectUrl, (err, database) => {
       mongoUsers.find({mod: true}).toArray(async function(err, mods) {
         var s = [];
         for (let mod of mods) {
-          var inf = await bot.getChatMember(config.group, mod.userId);
-          s.push(tools.nameToBeShow(inf.user));
-        }
+          var success = true;
+          try {
+            var inf = await bot.getChatMember(config.group, mod.userId);
+          } catch(err){
+            success = false;
+          }
+          if(success != false) {
+            s.push(tools.nameToBeShow(inf.user));
+          }
+        };
         bot.sendMessage(msg.chat.id, messages.modList + s.join('\n'), {parse_mode : 'HTML', disable_web_page_preview: 'true'});
       })
     }
