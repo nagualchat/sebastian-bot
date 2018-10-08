@@ -1,0 +1,5 @@
+old/
+upload.sh
+node_modules/
+package-lock.json
+.directory
