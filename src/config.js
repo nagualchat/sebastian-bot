@@ -2,27 +2,27 @@ const env = process.env.NODE_ENV; // Может быть production или devel
 
 const connections = {
   'production': {
-    telegramToken: '466800324:AAEJiwvBnm6CaJ9Y93N6j4EbdLWIde37Wvo',
+    telegramToken: '',
     mongo: {
-      url: 'mongodb://bot:B4a7ZJaDcYAeTt@ds038547.mlab.com:38547/sebastian-db',
+      url: '',
       options: {}
     },
-    groupId: -1001083395167
+    groupId: 
   },
 
   'development': {
-    telegramToken: '444454596:AAHtdxKjjQaF-9wGmYdScgGjvS8GoFa6M4M', // @botbotobot
+    telegramToken: '',
     mongo: {
-      url: 'mongodb://bot:B4a7ZJaDcYAeTt@ds133004.mlab.com:33004/sebastian-db', // eirim
+      url: '',
       options: {}
     },
-    groupId: -1001137207327
+    groupId: 
   }
 };
 
 const settings = {
-  channelId: -1001135900667,  // ID канала для удалённых сообщений
-  adminUid: 200352801,        // UID админа
+  channelId: ,  // ID канала для удалённых сообщений
+  adminUid: ,        // UID админа
   siteUrl: 'http://nagualism.space',
 };
 
