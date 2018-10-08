@@ -1,5 +1,6 @@
-old/
-upload.sh
 node_modules/
 package-lock.json
 .directory
+src/config.js
+old/
+upload.sh
