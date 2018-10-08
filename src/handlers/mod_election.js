@@ -72,7 +72,7 @@ module.exports = function(bot) {
     console.log('[Выборы]', tools.name2show(msg.from) + ' (' + msg.from.id + ') проголосовал за ' + vote);
   });
 
-  /* Основной цикл программы выборов, в котором переключаются их этапы */
+  /* Цикл, в котором переключаются этапы программы выборов */
   setInterval(async function сycle() {
     var election = await Elections.findOne({ $or: [{ stage: 'collecting' }, { stage: 'voting' }] });
 
