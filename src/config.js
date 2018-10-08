@@ -1,4 +1,4 @@
-const env = process.env.NODE_ENV; // Может быть production или development
+const env = process.env.NODE_ENV;
 
 const connections = {
   'production': {
@@ -22,7 +22,7 @@ const connections = {
 
 const settings = {
   channelId: ,  // ID канала для удалённых сообщений
-  adminUid: ,        // UID админа
+  adminUid: ,   // UID админа
   siteUrl: 'http://nagualism.space',
 };
 
