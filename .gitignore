@@ -1,7 +1,0 @@
--node_modules/
--package-lock.json
--.directory
--vscode/
--src/config.js
--old/
--upload.sh
