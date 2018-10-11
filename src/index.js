@@ -28,14 +28,14 @@ const bot = new TelegramBot(config.telegramToken, { polling: true, request: prox
 
 bot.on('polling_error', (err) => {
   if (err.message.match(/502 Bad Gateway/i)) {
-    console.log('[Log] EPARSE: Error parsing Telegram response (502 Bad Gateway)');
+    console.log('[Telegram] EPARSE: Error parsing Telegram response (502 Bad Gateway)');
   } else {
-    console.log('[Log]', err.message);
+    console.log('[Telegram]', err.message);
   }
 });
 
 bot.on('error', (err) => {
-  console.log('[Log]', err.message);
+  console.log('[Telegram]', err.message);
 });
 
 bot.getMe().then((res) => { botData = res });

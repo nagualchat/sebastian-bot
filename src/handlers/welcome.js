@@ -37,11 +37,11 @@ module.exports = function(bot) {
 
   bot.on('new_chat_members', async (msg) => {
     if (msg.new_chat_member.id == botData.id) return; // Чтобы не приветствовал самого себя
-    // if (msg.new_chat_member.is_bot === true) {
-    //   bot.kickChatMember(msg.chat.id, msg.new_chat_member.id);
-    //   bot.sendPhoto(msg.chat.id, 'https://i.imgflip.com/a9m7q.jpg', { caption: 'Должен остаться только один!' });
-    //   return;
-    // }
+    if (msg.new_chat_member.is_bot === true) {
+      bot.kickChatMember(msg.chat.id, msg.new_chat_member.id);
+      bot.sendPhoto(msg.chat.id, 'https://i.imgflip.com/a9m7q.jpg', { caption: 'Должен остаться только один!' });
+      return;
+    }
     var user = await Users.findOne({ uid: msg.new_chat_member.id });
     if (!user) {
       bot.sendMessage(msg.chat.id, tools.randomW(welcomeNew).replace('$name', tools.name2show(msg.new_chat_member)), { parse_mode: 'HTML', disable_web_page_preview: true });
@@ -52,7 +52,7 @@ module.exports = function(bot) {
       } else {
         bot.sendMessage(msg.chat.id, tools.randomW(welcomeRet2).replace('$name', tools.name2show(msg.new_chat_member)));
       }
-      await Users.update({ uid: msg.new_chat_member.id }, { $set: { name: tools.name2show(msg.new_chat_member), lastJoin: msg.date, rejoins: user.rejoins + 1 || 1 } });
+      await Users.updateOne({ uid: msg.new_chat_member.id }, { $set: { name: tools.name2show(msg.new_chat_member), lastJoin: msg.date, rejoins: user.rejoins + 1 || 1 } });
     }
   });
 

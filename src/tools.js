@@ -22,8 +22,8 @@ function randomW(array) {
   for (var i = 0; i < array.length; i++) {
     for (var x = 0; x < array[i].weight; x++) {
       arrayIds.push(array[i].text);
-    }
-  }
+    };
+  };
   // Из размноженных элементов выбирается случайный
   var index = Math.floor(Math.random() * (arrayIds.length));
   // В котором случайно выбираются подстроки, оформленные в {}
@@ -35,12 +35,41 @@ function randomW(array) {
 };
 
 // Перемешивание содержимого массива
-function shuffle(a) {
-  for (let i = a.length; i; i--) {
+function shuffle(arr) {
+  for (let i = arr.length; i; i--) {
     let j = Math.floor(Math.random() * i);
-    [a[i - 1], a[j]] = [a[j], a[i - 1]];
-  }
-}
+    [arr[i - 1], arr[j]] = [arr[j], arr[i - 1]];
+  };
+};
+
+// Сортировка массива объектов
+// Аргументом передаётся поле (или несколько полей) по которым необходимо отсортировать
+function sortByAttribute(array, ...attrs) {
+  let predicates = attrs.map(pred => {
+    let descending = pred.charAt(0) === '-' ? -1 : 1;
+    pred = pred.replace(/^-/, '');
+    return {
+      getter: o => o[pred],
+      descend: descending
+    };
+  });
+  return array.map(item => {
+    return {
+      src: item,
+      compareValues: predicates.map(predicate => predicate.getter(item))
+    };
+  })
+  .sort((o1, o2) => {
+    let i = -1, result = 0;
+    while (++i < predicates.length) {
+      if (o1.compareValues[i] < o2.compareValues[i]) result = -1;
+      if (o1.compareValues[i] > o2.compareValues[i]) result = 1;
+      if (result *= predicates[i].descend) break;
+    }
+    return result;
+  })
+  .map(item => item.src);
+};
 
 // Функция делает первую букву строки заглавной
 function capitalize(string) {
@@ -89,6 +118,7 @@ exports.name2show = name2show;
 exports.randomW = randomW;
 exports.random = random;
 exports.shuffle = shuffle;
+exports.sortByAttribute = sortByAttribute;
 exports.capitalize = capitalize;
 exports.decl = decl;
 exports.declension = declension;

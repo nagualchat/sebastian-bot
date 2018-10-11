@@ -64,9 +64,9 @@ module.exports = function(bot) {
       }
       if (deleted == false) {
         if (user.antispam > 1) {
-          await Users.update({ uid: msg.from.id }, { $set: { antispam: user.antispam - 1 } });
+          await Users.updateOne({ uid: msg.from.id }, { $set: { antispam: user.antispam - 1 } });
         } else {
-          await Users.update({ uid: msg.from.id }, { $unset: { antispam: '' } });
+          await Users.updateOne({ uid: msg.from.id }, { $unset: { antispam: '' } });
         }
       }
     }
@@ -81,11 +81,13 @@ module.exports = function(bot) {
         await bot.forwardMessage(msg.from.id, config.channelId, found.forwardId);
       } catch (err) {
         success = false;
-        bot.answerCallbackQuery(msg.id, reSendErr, true);
+        bot.answerCallbackQuery({ callback_query_id: msg.id, text: reSend, show_alert: true });
+
         console.log('[Log] доставить сообщение не удалось (' + err.message + ')');
       }
       if (success != false) {
-        bot.answerCallbackQuery(msg.id, reSend);
+        bot.answerCallbackQuery({ callback_query_id: msg.id, text: reSendErr });
+
       }
     }
   });
@@ -102,7 +104,7 @@ module.exports = function(bot) {
       bot.deleteMessage(msg.chat.id, msg.message_id);
       bot.kickChatMember(msg.chat.id, msg.from.id);
       bot.unbanChatMember(msg.chat.id, msg.from.id);
-      await Users.update({ uid: msg.from.id }, { $set: { antispam: 10 } });
+      await Users.updateOne({ uid: msg.from.id }, { $set: { antispam: 10 } });
     }
     DeletedMsgs.create({ msg, reportId: report.message_id, forwardId: forward.message_id });
   };
