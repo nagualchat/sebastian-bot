@@ -1,0 +1,7 @@
+.*
+!/.gitignore
+node_modules/
+package-lock.json
+src/config.js
+upload.sh
+src/config.js
