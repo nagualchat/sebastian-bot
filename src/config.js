@@ -5,7 +5,7 @@ const connections = {
     telegramToken: '',
     mongo: {
       url: '',
-      options: {}
+      options: { useNewUrlParser: true }
     },
     groupId: 
   },
@@ -14,7 +14,7 @@ const connections = {
     telegramToken: '',
     mongo: {
       url: '',
-      options: {}
+      options: { useNewUrlParser: true }
     },
     groupId: 
   }
