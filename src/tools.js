@@ -90,14 +90,14 @@ function decl(number, titles) {
 
 // Склонение слов
 function declension(match, mode) {
-  let words = { message: ['сообщение', 'сообщения', 'сообщений'], plus: ['плюс', 'плюса', 'плюсов'] };
+  // Склонения можно определить, примеряя к цифрам 1, 3 и 5
+  let words = { men: ['человек', 'человека', 'человек'], message: ['сообщение', 'сообщения', 'сообщений'], plus: ['плюс', 'плюса', 'плюсов'] };
   return decl(match, words[mode]);
 }
 
 // Функция отображения срока наказания для мьюта
 function dconvert(match, mode) {
   var regexp = match.match(/(\d*)(\S)/i);
-  // Склонения можно определить, примеряя к цифрам 1, 3 и 5
   let words = { day: ['дня', 'дней', 'дней'], hour: ['часа', 'часов', 'часов'] };
   if (regexp[2] == 'd' && regexp[1] <= 7) {
     if (mode == 'date') {

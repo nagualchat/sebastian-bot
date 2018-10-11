@@ -1,14 +1,15 @@
 const moment = require('moment');
-const Elections = require('../models/elections');
 const Users = require('../models/users');
+const Elections = require('../models/elections');
 const tools = require('../tools');
 const config = require('../config');
 
 const pollText = 'Пришло время выборов! Голосуйте за того, кто будет модератором в течении следующей недели.\n\n' +
   '_Голосование анонимное. Участники выбраны случайным образом из числа активных. Опрос продлится 24 часа, после чего будут объявлены результаты._';
-const pollEndText = 'Результаты голосования\n\n$top'
+const pollEndText = '*Результаты опроса*\n\n$top\n\nИтого проголосовало: $sum.'
 const finalText = 'Выборы завершились победой $name. Поздравляю!\n\n' +
-  'Модераторские полномочия будут активны в течении недели. Ознакомиться с доступными в это время командами можно набрав /mod. Пользуйся ими с умом, придерживаясь правил чата.'
+  'Модераторские полномочия будут активны в течении недели. Ознакомиться с доступными в это время командами можно набрав /mod. ' +
+  'Пользуйся ими с умом, придерживаясь [правил](https://t.me/nagualchat/35397) чата.'
 const final2Text = 'Слишком мало голосов для того чтобы можно было однозначно выявить победителя. Следующая неделя пройдёт без модератора.'
 
 // Длительность этапов выборов в часах
@@ -119,18 +120,23 @@ module.exports = function(bot) {
     // Сортировка сначала по количеству голосов, потом дополнительно по имени
     votesSorted = tools.sortByAttribute(votesSorted, '-votes', 'name')
 
+    // Общее количество голосов
+    var sum = votesSorted.reduce((a, b) => +a + +b.votes, 0);
+
     var top = votesSorted.map(function(item) {
       return `${item.name}  —  ${item.votes}`;
     });
 
     try {
       await bot.unpinChatMessage(config.groupId);
-      await bot.editMessageText(pollEndText.replace('$top', top.join('\n')), { chat_id: config.groupId, message_id: election.pollMsgId, parse_mode: 'markdown' });
     } catch (err) {}
+
+    bot.editMessageText(pollEndText.replace('$top', top.join('\n')).replace('$sum', tools.declension(sum, 'men')), { chat_id: config.groupId, message_id: election.pollMsgId, parse_mode: 'markdown' });
 
     if (votesSorted[0].votes >= minVotesWinner && votesSorted[0].votes != votesSorted[1].votes) {
       await Users.updateOne({ uid: votesSorted[0].uid }, { isMod: true });
-      bot.sendMessage(config.groupId, finalText.replace('$name', '[' + votesSorted[0].name + '](tg://user?id=' + votesSorted[0].uid + ')'), { reply_to_message_id: election.pollMsgId, parse_mode: 'markdown' });
+      bot.sendMessage(config.groupId, finalText.replace('$name', '[' + votesSorted[0].name + '](tg://user?id=' + votesSorted[0].uid + ')'), 
+        { reply_to_message_id: election.pollMsgId, parse_mode: 'markdown', disable_web_page_preview: 'true' });
     } else {
       bot.sendMessage(config.groupId, final2Text, { reply_to_message_id: election.pollMsgId });
     }
