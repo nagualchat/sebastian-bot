@@ -6,6 +6,7 @@ const userSchema = new mongoose.Schema({
   firstJoin: Number,
   lastJoin: Number,
   rejoins: Number,
+  activity: Number,
   thanks: Number,
   isMod: Boolean,
   antispam: Number

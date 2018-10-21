@@ -3,4 +3,5 @@
 node_modules/
 package-lock.json
 src/config.js
+ecosystem.config.js
 upload.sh

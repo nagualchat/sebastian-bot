@@ -11,7 +11,7 @@ const welcomeNew = [
   { text: '{Рад видеть тебя в нашем чате, $name!|Рад тебя приветствовать в нашем чате, $name!}{| Располагайся, чувствуй себя как дома.}', weight: 10 },
   { text: 'Вы только посмотрите, кто к нам заглянул. {Это же $name!|Уж не $name ли это?}', weight: 5 },
   { text: '{Приветствую|Здравствуй|Добро пожаловать}, $name. Ты уже прочёл книги Кастанеды или только собираешься?{| В любом случае, советую заглянуть в нашу <a href="http://nagualism.space/lib">библиотеку</a>.}', weight: 5 },
-  { text: '{Приветствую|Здравствуй|Добро пожаловать}, $name. Если тебе понадобится найти что-нибудь в книгах Кастанеды, то набери в поле ввода <code>@toltebot искомые слова</code> и я покажу в каких текстах они встречаются. Или можешь воспользоваться поиском на нашем <a href="http://nagualism.space">сайте</a>.', weight: 10 },
+  { text: '{Приветствую|Здравствуй|Добро пожаловать}, $name. Если тебе понадобится что-нибудь найти в книгах Кастанеды, то набери в поле ввода <code>@toltebot искомые слова</code> и я покажу в каких текстах они встречаются. Или можешь воспользоваться поиском на нашем <a href="http://nagualism.space">сайте</a>.', weight: 10 },
   { text: '{Приветствую|Здравствуй|Добро пожаловать}, $name. Возможно, тебе будет интересно узнать, что кроме основного чата у нас имеются дополнительные группы: <a href="https://t.me/nagualchat_prac">практика</a> и <a href="https://t.me/nagualchat_dev">разработка</a>.', weight: 10 }
 ];
 
@@ -45,14 +45,14 @@ module.exports = function(bot) {
     var user = await Users.findOne({ uid: msg.new_chat_member.id });
     if (!user) {
       bot.sendMessage(msg.chat.id, tools.randomW(welcomeNew).replace('$name', tools.name2show(msg.new_chat_member)), { parse_mode: 'HTML', disable_web_page_preview: true });
-      await Users.create({ uid: msg.new_chat_member.id, name: tools.name2show(msg.new_chat_member), firstJoin: msg.date, lastJoin: msg.date, antispam: antispamCounter });
+      await Users.create({ uid: msg.new_chat_member.id, name: tools.name2show(msg.new_chat_member), firstJoin: msg.date, lastJoin: msg.date, activity: msg.date, antispam: antispamCounter });
     } else {
       if (moment().diff(moment.unix(user.lastJoin), 'hours') <= joinPeriod) {
-        bot.sendMessage(msg.chat.id, tools.randomW(welcomeRet1).replace('$name', tools.name2show(msg.new_chat_member)));
+       // bot.sendMessage(msg.chat.id, tools.randomW(welcomeRet1).replace('$name', tools.name2show(msg.new_chat_member)));
       } else {
         bot.sendMessage(msg.chat.id, tools.randomW(welcomeRet2).replace('$name', tools.name2show(msg.new_chat_member)));
       }
-      await Users.updateOne({ uid: msg.new_chat_member.id }, { $set: { name: tools.name2show(msg.new_chat_member), lastJoin: msg.date, rejoins: user.rejoins + 1 || 1 } });
+      await Users.updateOne({ uid: msg.new_chat_member.id }, { $set: { name: tools.name2show(msg.new_chat_member), lastJoin: msg.date, rejoins: user.rejoins + 1 || 1, activity: msg.date } });
     }
   });
 
