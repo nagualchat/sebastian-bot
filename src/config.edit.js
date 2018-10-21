@@ -4,25 +4,24 @@ const connections = {
   'production': {
     telegramToken: '',
     mongo: {
-      url: '',
+      url: 'mongodb://',
       options: { useNewUrlParser: true }
     },
-    groupId: 
+    groupId: 123456789
   },
 
   'development': {
     telegramToken: '',
     mongo: {
-      url: '',
+      url: 'mongodb://',
       options: { useNewUrlParser: true }
     },
-    groupId: 
+    groupId: 123456789
   }
 };
 
 const settings = {
-  channelId: ,  // ID канала для удалённых сообщений
-  adminUid: ,   // UID админа
+  channelId: 123456789,  // ID канала для удалённых сообщений
   siteUrl: 'http://nagualism.space',
 };
 
