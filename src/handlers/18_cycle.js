@@ -7,13 +7,27 @@ const cycleDayText = 'Наступил день восемнадцатиднев
 
 module.exports = function(bot) {
 
-  function nextDate(baseDate) {
+  function nextDate2(baseDate) {
     var today = new Date();
     const period = 18 * 1000 * 60 * 60 * 24; // 18 дней в милисекундах
     
     today = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     var remainder = (today.getTime() - baseDate.getTime()) % (period);
     return new Date(today.getTime() + (period - remainder));
+  };
+
+  function nextDate(baseDate) {
+    var today = new Date().getTime();
+    const period = 18 * 1000 * 60 * 60 * 24; // 18 дней в милисекундах
+  
+    decimal = baseDate.getTime() / period;
+    decimal = decimal - Math.floor(decimal); // находим дробную часть от деления
+    offset = period * (1 - decimal);
+    next = ((today + offset) / period);
+    decimalNext = 1 - (next - Math.floor(next)); // 1 - дробная часть от next
+    nextMs = period * decimalNext; // сколько милисекунд нужно прибавить к текущей дате
+  
+    return new Date(today + nextMs); // итоговая дата
   };
 
   function getNextDays() {

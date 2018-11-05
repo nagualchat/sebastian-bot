@@ -64,8 +64,9 @@ module.exports = function(bot) {
     } catch (err) { console.log(err) }
 
     var buttons = election.pollData.map(function(item) {
-      var votes = item.voters.length > 0 ? ` — ${item.voters.length}` : '';
-      return [{ text: item.name + votes, callback_data: 'vote_' + item.uid }];
+      //var votes = item.voters.length > 0 ? ` — ${item.voters.length}` : '';
+      //return [{ text: item.name + votes, callback_data: 'vote_' + item.uid }];
+      return [{ text: item.name, callback_data: 'vote_' + item.uid }];
     });
 
     bot.editMessageText(election.stage == 'voting' ? pollText : poll2Text, {
@@ -86,8 +87,8 @@ module.exports = function(bot) {
     // Фильтрация кандидатов от ботов, админов и покинувших группу людей
     await Promise.all(election.candidates.map(async (id) => {
       var candidate = await bot.getChatMember(config.groupId, id).catch(err => { console.log('[Выборы] Кандидат ' + id + ' не найден') });
-      //if (candidate && !candidate.user.is_bot && candidate.status === 'member') {
-      if (!candidate.user.is_bot && candidate.status === 'member' || candidate.status === 'creator') {
+      if (candidate && !candidate.user.is_bot && candidate.status === 'member') {
+      //if (!candidate.user.is_bot && candidate.status === 'member' || candidate.status === 'creator') {
         candidatesTmp.push({ uid: candidate.user.id, name: tools.name2show(candidate.user), voters: [] });
       }
     }));

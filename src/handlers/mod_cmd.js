@@ -26,7 +26,7 @@ module.exports = function(bot) {
   /* Команда /mute, лишающая пользователя возможности оправлять сообщения в общий чат */
   /* Аргументом указывается длительность в формате 1d и 1h */
   bot.onText(/^\/mute\b ?([^\s]+)?/, async (msg, match) => {
-    if (msg.chat.type != 'supergroup' && await checkAuthority(config.groupId, msg.from.id) == 'user') return;
+    if (msg.chat.type != 'supergroup' || await checkAuthority(config.groupId, msg.from.id) == 'user') return;
 
     if (msg.reply_to_message && match[1] && tools.dconvert(match[1]) != 'err') {
       if (await checkAuthority(config.groupId, msg.reply_to_message.from.id) != 'user') {
@@ -43,7 +43,7 @@ module.exports = function(bot) {
 
   /* Команда /unmute, снимающая все ограничения */
   bot.onText(/^\/unmute\b/, async (msg) => {
-    if (msg.chat.type != 'supergroup' && await checkAuthority(config.groupId, msg.from.id) == 'user') return;
+    if (msg.chat.type != 'supergroup' || await checkAuthority(config.groupId, msg.from.id) == 'user') return;
     if (!msg.reply_to_message) bot.sendMessage(msg.chat.id, unmuteCommand, { parse_mode: 'markdown' });
 
     if (await checkAuthority(config.groupId, msg.reply_to_message.from.id) != 'user') {
@@ -62,7 +62,7 @@ module.exports = function(bot) {
 
   /* Команда /kick, удаляющая участника из чата */
   bot.onText(/^\/kick\b/, async (msg) => {
-    if (msg.chat.type != 'supergroup' && await checkAuthority(config.groupId, msg.from.id) == 'user') return;
+    if (msg.chat.type != 'supergroup' || await checkAuthority(config.groupId, msg.from.id) == 'user') return;
     if (!msg.reply_to_message) bot.sendMessage(msg.chat.id, kickCommand, { parse_mode: 'markdown' });
 
     if (await checkAuthority(config.groupId, msg.reply_to_message.from.id) != 'user') {
@@ -77,7 +77,7 @@ module.exports = function(bot) {
 
   /* Команда /pin, прикрепляющая сообщение */
   bot.onText(/^\/pin\b/, async (msg) => {
-    if (msg.chat.type != 'supergroup' && await checkAuthority(config.groupId, msg.from.id) == 'user') return;
+    if (msg.chat.type != 'supergroup' || await checkAuthority(config.groupId, msg.from.id) == 'user') return;
 
     if (msg.reply_to_message) {
       bot.pinChatMessage(msg.chat.id, msg.reply_to_message.message_id);
@@ -88,7 +88,7 @@ module.exports = function(bot) {
 
   /* Команда /unpin */
   bot.onText(/^\/unpin\b/, async (msg) => {
-    if (msg.chat.type != 'supergroup' && await checkAuthority(config.groupId, msg.from.id) == 'user') return;
+    if (msg.chat.type != 'supergroup' || await checkAuthority(config.groupId, msg.from.id) == 'user') return;
     bot.unpinChatMessage(msg.chat.id);
   });
 
