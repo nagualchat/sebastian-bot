@@ -17,8 +17,8 @@ const goodNight = [
   'Не забудь посмотреть на руки во сне.'
 ];
 
-// Время между пожеланиями доброго дня, в течении которого бот на них не реагирует (в секундах)
-const responseTimeout = 60;
+// Время между пожеланиями доброго дня, в течении которого бот на них не реагирует
+const responseTimeout = 60 * 2;
 
 var lastGoodDay, lastGoodNight;
 
@@ -28,7 +28,7 @@ module.exports = function(bot) {
     if (!lastGoodDay) {
       bot.sendMessage(msg.chat.id, tools.random(goodDay));
       lastGoodDay = msg.date;
-    } else if (moment().diff(moment.unix(lastGoodDay), 'seconds') >= responseTimeout) {
+    } else if (moment().diff(moment.unix(lastGoodDay), 'minutes') >= responseTimeout) {
       bot.sendMessage(msg.chat.id, tools.random(goodDay));
       lastGoodDay = msg.date;
     }
@@ -38,7 +38,7 @@ module.exports = function(bot) {
     if (!lastGoodNight) {
       bot.sendMessage(msg.chat.id, tools.random(goodNight));
       lastGoodNight = msg.date;
-    } else if (moment().diff(moment.unix(lastGoodNight), 'seconds') >= responseTimeout) {
+    } else if (moment().diff(moment.unix(lastGoodNight), 'minutes') >= responseTimeout) {
       bot.sendMessage(msg.chat.id, tools.random(goodNight));
       lastGoodNight = msg.date;
     }
