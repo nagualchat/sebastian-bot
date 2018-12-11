@@ -1,0 +1,60 @@
+html
+  head
+    meta(charset="UTF-8")
+    meta(name="viewport", content="width=device-width, initial-scale=1.0")
+    link(rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.7.2/css/bulma.min.css")
+    link(rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/MaterialDesign-Webfont/2.3.54/css/materialdesignicons.min.css")
+    style(type='text/css').
+      .section {
+        padding-top: 1em !important;
+      }
+      .reply {
+        padding-left: 15px;
+        font-style: italic; 
+      }
+      #scroll-button {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 99;
+        padding: 10px;
+      }
+    script.
+      window.onload=function(){
+        document.getElementById('scroll-button').addEventListener('click', () => {
+          var scroll = document.getElementById('body');
+          scroll.scrollTop = scroll.scrollHeight;
+          scroll.animate({scrollTop: scroll.scrollHeight});
+        });
+      }
+
+    title chatlog
+  body#body
+    div.section.columns.is-centered
+      div.container.column.is-9-tablet.is-8-desktop.is-7-widescreen.is-6-fullhd
+        h1.title #[a( href='https://tgclick.com/nagualchat', target='_blank') @nagualchat]
+        h2.subtitle.is-6 Сообщения (#{count}) за последние 24 часа в своём изначальном виде, в том числе удалённые и отредактированные.
+        div.content
+          each item in log
+            div.content
+              strong #{item.msg.from.first_name} #{item.msg.from.last_name || ''}
+              if item.msg.reply_to_message
+                div.reply #{item.msg.reply_to_message.from.first_name + ''}#{item.msg.reply_to_message.from.last_name || ''}: #{item.msg.reply_to_message.text}
+                if item.msg.text
+                  div #{item.msg.text}
+                else if item.msg.sticker
+                  div [sticker]
+                else if (item.msg.photo || item.msg.audio || item.msg.video || item.msg.document)
+                  div [media]
+              else if item.msg.new_chat_member
+                div [join]
+              else if item.msg.sticker
+                div [sticker]
+              else if (item.msg.photo || item.msg.audio || item.msg.video || item.msg.document)
+                div [media]
+              else if item.msg.text
+                div #{item.msg.text}
+              else
+                div [unidentified]
+        div#scroll-button.button.is-rounded.is-medium
+          div.mdi.mdi-24px.mdi-chevron-down

@@ -1,3 +1,5 @@
+/*  Уведомление он наступившем дне 18 дневного цикла  */
+
 const config = require('../config');
 
 const cycleDayText = 'Наступил день восемнадцатидневного цикла. ' +
@@ -52,7 +54,7 @@ module.exports = function(bot) {
     const now = new Date();
     if (now.getTime() >= nextDays[0].date.getTime()) {
       bot.sendMessage(config.groupId, cycleDayText.replace('$year', nextDays[0].type), { parse_mode: 'markdown' });
-      console.log('[18 дневный цикл] Наступил день (' + nextDays[0].type + 'от г):', nextDays[0].date.toString());
+      console.log('[18 дневный цикл] Наступил день (от ' + nextDays[0].type + 'г):', nextDays[0].date.toString());
       nextDays = getNextDays();
     };
   }, 30 * 60 * 1000);

@@ -8,6 +8,7 @@ const userSchema = new mongoose.Schema({
   rejoins: Number,
   activity: Number,
   thanks: Number,
+  warns: Number,
   isMod: Boolean,
   antispam: Number
 });

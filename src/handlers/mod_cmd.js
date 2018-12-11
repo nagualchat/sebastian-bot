@@ -1,26 +1,73 @@
 const config = require('../config');
 const tools = require('../tools');
 const Users = require('../models/users');
+const DeletedMsgs = require('../models/dels');
 
-const modCommand = 'Все команды (кроме последней) необходимо отправлять в ответ на чьё-либо сообщение — таким образом задаётся цель.'
+const modCommand = 'Все команды необходимо отправлять в ответ на чьё-либо сообщение — таким образом задаётся цель.'
+const warnCommand = '*/warn*\nВыдаёт предупреждения, которые накапливаются. После получения трёх предупреждений будет установлен мьют на сутки.';
 const muteCommand = '*/mute*\nЗапрещает писать в чат в течении определённого срока (от 1 часа до 7 дней). ' +
   'Обязательно должен быть указан срок ограничения: `/mute 12h` — двенадцать часов, `/mute 2d` — два дня, и так далее.';
 const unmuteCommand = '*/unmute*\nСнимает все ограничения (если они есть).'
 const kickCommand = '*/kick*\nВыгоняет человека из группы (он сможет вернуться, если захочет).';
-const pinCommand = '*/pin*\nПрикрепляет сообщение. Все в чате получат об этом уведомление.';
-const unpinCommand = '*/unpin*\nУбирает прикреплённое сообщение.';
+const spamCommand = '*/spam*\nУдаляет сообщение спамера и выгоняет его из группы. Устанавливает метку для антиспам-функции.';
 
+const spamNotice = 'Сообщение участника $username было удалено, а сам он выгнан вон за спам.';
+const warnNotice = '$username, это $count предупреждение. После получения трёх будет установлен мьют на сутки.';
 const muteNotice = '$username не сможет писать сообщения в течении $duration.';
 const unmuteNotice = 'С $username были сняты все установленные ограничения.';
 const kickNotice = '$username покинул группу.';
 
+const fail = ' Команду следует отправлять в ответ на чьё-либо сообщение (таким образом задаётся цель).';
 const error = 'Отказываюсь это выполнять.'
 
 module.exports = function(bot) {
 
   /* Справка по всем этим функциям */
   bot.onText(/^\/mod\b/, async (msg) => {
-    bot.sendMessage(msg.chat.id, `${modCommand}\n\n${muteCommand}\n\n${unmuteCommand}\n\n${kickCommand}\n\n${pinCommand}\n\n${unpinCommand}`, { parse_mode: 'markdown' });
+    bot.sendMessage(msg.chat.id, `${modCommand}\n\n${warnCommand}\n\n${muteCommand}\n\n${unmuteCommand}\n\n${kickCommand}\n\n${spamCommand}`, { parse_mode: 'markdown' });
+  });
+
+  /* Команда /warn, выдающая предупреждение. После 3 предупреждений мьют на сутки  */
+  bot.onText(/^\/warn\b/, async (msg) => {
+    if (msg.chat.type != 'supergroup' || await checkAuthority(config.groupId, msg.from.id) == 'user') return;
+    if (!msg.reply_to_message) return bot.sendMessage(msg.chat.id, warnCommand + fail, { parse_mode: 'markdown' });
+
+    if (await checkAuthority(config.groupId, msg.reply_to_message.from.id) == 'user') {
+      bot.sendMessage(msg.chat.id, error, { parse_mode: 'markdown' });
+    } else {
+      var user = await Users.findOne({ uid: msg.reply_to_message.from.id });
+      if (user.warns && user.warns >= 2) {
+        var until_date = moment().add(1, 'days').unix();
+        bot.restrictChatMember(msg.chat.id, msg.reply_to_message.from.id, { until_date: until_date, can_send_messages: false });
+        bot.sendMessage(msg.chat.id, muteNotice.replace('$username', '[' + tools.name2show(msg.reply_to_message.from) + '](tg://user?id=' +
+          msg.reply_to_message.from.id + ')').replace('$duration', '1 дня'), { parse_mode: 'markdown' });
+        await Users.updateOne({ uid: msg.reply_to_message.from.id }, { $unset: { warns: '' } });
+      } else {
+        await Users.updateOne({ uid: msg.reply_to_message.from.id }, { $set: { warns: user.warns + 1 || 1 } });
+        bot.sendMessage(msg.chat.id, warnNotice.replace('$username', '[' + tools.name2show(msg.reply_to_message.from) + '](tg://user?id=' +
+          msg.reply_to_message.from.id + ')').replace('$count', user.warns + 1 || 1), { parse_mode: 'markdown' });
+      }
+    }
+  });
+
+  /* Команда /spam для удаления спама (удаление сообщения с бекапом, удаление из группы и активация системы антиспама)   */
+  bot.onText(/^\/spam\b/, async (msg) => {
+    if (msg.chat.type != 'supergroup' || await checkAuthority(config.groupId, msg.from.id) == 'user') return;
+    if (!msg.reply_to_message) return bot.sendMessage(msg.chat.id, spamCommand + fail, { parse_mode: 'markdown' });
+
+    if (await checkAuthority(config.groupId, msg.reply_to_message.from.id) != 'user') {
+      bot.sendMessage(msg.chat.id, error, { parse_mode: 'markdown' });
+    } else {
+      bot.kickChatMember(msg.chat.id, msg.reply_to_message.from.id);
+      bot.unbanChatMember(msg.chat.id, msg.reply_to_message.from.id);
+      await Users.updateOne({ uid: msg.reply_to_message.from.id }, { $set: { antispam: 10 } });
+      var forward = await bot.forwardMessage(config.channelId, msg.chat.id, msg.reply_to_message.message_id, { disable_notification: true });
+      var report = await bot.sendMessage(msg.chat.id, spamNotice.replace('$username', '[' + tools.name2show(msg.reply_to_message.from) + '](tg://user?id=' + msg.reply_to_message.from.id + ')'), {
+        parse_mode: 'markdown', reply_markup: { inline_keyboard: [[{ text: 'Показать', callback_data: 'send_del_msg' }]]}
+      });
+      await DeletedMsgs.create({ msg, reportId: report.message_id, forwardId: forward.message_id });
+      bot.deleteMessage(msg.chat.id, msg.reply_to_message.message_id);
+    }
   });
 
   /* Команда /mute, лишающая пользователя возможности оправлять сообщения в общий чат */
@@ -37,14 +84,14 @@ module.exports = function(bot) {
           msg.reply_to_message.from.id + ')').replace('$duration', tools.dconvert(match[1])), { parse_mode: 'markdown' });
       };
     } else {
-      bot.sendMessage(msg.chat.id, muteCommand, { parse_mode: 'markdown' });
+      bot.sendMessage(msg.chat.id, muteCommand + fail, { parse_mode: 'markdown' });
     }
   });
 
   /* Команда /unmute, снимающая все ограничения */
   bot.onText(/^\/unmute\b/, async (msg) => {
     if (msg.chat.type != 'supergroup' || await checkAuthority(config.groupId, msg.from.id) == 'user') return;
-    if (!msg.reply_to_message) bot.sendMessage(msg.chat.id, unmuteCommand, { parse_mode: 'markdown' });
+    if (!msg.reply_to_message) return bot.sendMessage(msg.chat.id, unmuteCommand + fail, { parse_mode: 'markdown' });
 
     if (await checkAuthority(config.groupId, msg.reply_to_message.from.id) != 'user') {
       bot.sendMessage(msg.chat.id, error, { parse_mode: 'markdown' });
@@ -63,7 +110,7 @@ module.exports = function(bot) {
   /* Команда /kick, удаляющая участника из чата */
   bot.onText(/^\/kick\b/, async (msg) => {
     if (msg.chat.type != 'supergroup' || await checkAuthority(config.groupId, msg.from.id) == 'user') return;
-    if (!msg.reply_to_message) bot.sendMessage(msg.chat.id, kickCommand, { parse_mode: 'markdown' });
+    if (!msg.reply_to_message) return bot.sendMessage(msg.chat.id, kickCommand + fail, { parse_mode: 'markdown' });
 
     if (await checkAuthority(config.groupId, msg.reply_to_message.from.id) != 'user') {
       bot.sendMessage(msg.chat.id, error, { parse_mode: 'markdown' });
@@ -73,23 +120,6 @@ module.exports = function(bot) {
       bot.sendMessage(msg.chat.id, kickNotice.replace('$username', '[' + tools.name2show(msg.reply_to_message.from) + '](tg://user?id=' +
         msg.reply_to_message.from.id + ')'), { parse_mode: 'markdown' });
     }
-  });
-
-  /* Команда /pin, прикрепляющая сообщение */
-  bot.onText(/^\/pin\b/, async (msg) => {
-    if (msg.chat.type != 'supergroup' || await checkAuthority(config.groupId, msg.from.id) == 'user') return;
-
-    if (msg.reply_to_message) {
-      bot.pinChatMessage(msg.chat.id, msg.reply_to_message.message_id);
-    } else {
-      bot.sendMessage(msg.chat.id, pinCommand, { parse_mode: 'markdown' });
-    }
-  });
-
-  /* Команда /unpin */
-  bot.onText(/^\/unpin\b/, async (msg) => {
-    if (msg.chat.type != 'supergroup' || await checkAuthority(config.groupId, msg.from.id) == 'user') return;
-    bot.unpinChatMessage(msg.chat.id);
   });
 
   /* Функция проверяет, является ли пользователь админом или модератором */

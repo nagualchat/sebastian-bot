@@ -14,6 +14,9 @@ mongoose.connect(config.mongo.url, config.mongo.options, (err) => {
   }
 });
 
+mongoose.connection.on('disconnected', () => { console.log('[Mongoose]', 'Соединение разорвано'); });
+mongoose.connection.on('reconnect', () => { console.log('[Mongoose]', 'Соединение перезапущено'); });
+
 // Обход РКН через ТОР на домашнем компе (на сервере всё работает напрямую)
 const proxyConfig = {};
 if (process.env.NODE_ENV === 'development') {
